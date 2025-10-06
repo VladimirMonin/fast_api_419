@@ -18,7 +18,7 @@ fake_users_db: dict[int, User] = {}
 app = FastAPI(
     title="Учебное приложение Python419",
     description="Пример простого API для управления пользователями",
-    version="1.0.0"
+    version="1.0.1"
 )
 
 

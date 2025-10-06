@@ -1,6 +1,5 @@
 # lesson_1.py
 from datetime import datetime
-from unittest.mock import Base
 from pydantic import BaseModel, ValidationError
 
 # 1. Определяем модель Пользователь
