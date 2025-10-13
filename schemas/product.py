@@ -1,12 +1,16 @@
-from pydantic import BaseModel, Field
+# schemas/product.py
 
+from pydantic import BaseModel, Field
 
 
 class CreateProduct(BaseModel):
     """
     Модель для операций POST, PUT
     """
-    name: str = Field(..., example="Позалоченный Плюмбус", description="Название товара")
+
+    name: str = Field(
+        ..., example="Позалоченный Плюмбус", description="Название товара"
+    )
     description: str = Field(
         ..., example="Описание товара", description="Подробное описание товара"
     )
@@ -19,8 +23,10 @@ class CreateProduct(BaseModel):
         ..., example="/images/plumbus.webp", description="URL изображения товара"
     )
 
+
 class Product(CreateProduct):
     """
     Модель для операций GET
     """
+
     id: int = Field(..., example=1, description="Уникальный идентификатор товара")
