@@ -1,18 +1,12 @@
 # routes/products.py
 from typing import List
+
+import telegram
 from schemas.product import Product, CreateProduct
 from data import products
 from fastapi import APIRouter, HTTPException, BackgroundTasks
+from utils.telegram_bot import send_telegram_message
 from asyncio import sleep
-
-
-# Имитация отправки данных в ТГ
-async def mock_telegram_notification(product_name: str, product_id: int):
-    print(f"[Background Task] Отправка уведомления в Telegram...")
-    await sleep(10)  # Имитируем задержку на отправку
-    print(
-        f"[Background Task] Уведомление успешно отправлено!\nТовар: {product_name} (ID: {product_id})"
-    )
 
 
 # --- Маршруты API для работы с товарами ---
@@ -115,10 +109,21 @@ async def create_product(product: CreateProduct, background_tasks: BackgroundTas
     new_product["id"] = new_product_id
     products.append(new_product)
 
-    # Фоновая задача - имитация отправки уведомления в Telegram
-    background_tasks.add_task(
-        mock_telegram_notification, new_product["name"], new_product_id
-    )
+    # Формируем сообщение для отправки в Telegram
+    telegram_message = f"""
+*Новый товар в магазине!*
+*Название:* {new_product['name']}
+*ID:* {new_product_id}
+*Описание:* {new_product['description']}
+http://127.0.0.1:8000/products/{new_product_id}
+
+```json
+{product.model_dump_json(indent=2, ensure_ascii=False)}
+```
+"""
+
+    # Фоновая задача - отправка уведомления в Telegram
+    background_tasks.add_task(send_telegram_message, telegram_message)
 
     return new_product
 
