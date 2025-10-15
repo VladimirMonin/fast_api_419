@@ -3,6 +3,7 @@ from typing import List
 from schemas.product import Product, CreateProduct
 from data import products
 from fastapi import APIRouter, HTTPException
+from tasks.notifications import send_tg_notification
 
 # --- Маршруты API для работы с товарами ---
 
@@ -103,6 +104,10 @@ async def create_product(product: CreateProduct):
     new_product = product.model_dump()
     new_product["id"] = new_product_id
     products.append(new_product)
+
+    # Добавляем Celery-задачу на отправку уведомления в Telegram
+    send_tg_notification.delay(product_name=new_product["name"], product_id=new_product_id)
+    
     return new_product
 
 
