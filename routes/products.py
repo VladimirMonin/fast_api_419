@@ -6,7 +6,6 @@ from schemas.product import Product, CreateProduct
 from data import products
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from utils.telegram_bot import send_telegram_message
-from asyncio import sleep
 
 
 # --- Маршруты API для работы с товарами ---
