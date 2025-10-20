@@ -1,7 +1,7 @@
 # utils/telegram.py
 import logging
 import telegram
-from config import settings
+from core.config import settings
 
 # Настройка логирования
 logging.basicConfig(level=logging.DEBUG)
