@@ -3,9 +3,13 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from core.config import settings
 
+import asyncio
+
+# Импортируем модели для регистрации в Base.metadata
+from models.base import Base  # Импортируем Base из пакета models
+from models.product import Product  # noqa: F401
+
 # URL для подключения к асинхронной SQLite
-# Три слеша означают относительный путь, четыре — абсолютный
-# DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 DATABASE_URL = settings.DATABASE_URL
 
 
@@ -20,3 +24,16 @@ AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     expire_on_commit=False,
 )
+
+# Стартовая инициализация базы данных
+# ВАЖНО. Оно не отслеживает изменения моделей автоматически. Это просто стартер. Он не изменит ваши таблицы при изменении моделей. Создаст таблицу если её нет. Если есть - пропустит.
+
+
+async def init_db():
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+if __name__ == "__main__":
+    asyncio.run(init_db())
