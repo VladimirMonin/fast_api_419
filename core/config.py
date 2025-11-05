@@ -1,11 +1,11 @@
-# ./config.py
+# core/config.py
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    REDIS_HOST: str
-    REDIS_PORT: int
-    TG_BOT_KEY: str
+    TELEGRAM_BOT_API_KEY: str
+    TELEGRAM_USER_ID: str
+    DATABASE_URL: str
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

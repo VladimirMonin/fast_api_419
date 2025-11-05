@@ -1,9 +1,12 @@
 # routes/products.py
 from typing import List
+
+import telegram
 from schemas.product import Product, CreateProduct
 from data import products
-from fastapi import APIRouter, HTTPException
-from tasks.notifications import send_tg_notification
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from utils.telegram_bot import send_telegram_message
+
 
 # --- Маршруты API для работы с товарами ---
 
@@ -93,7 +96,7 @@ async def list_products(search: str = "", sort: str = "", has_image: bool = Fals
     summary="Создать новый товар",
     status_code=201,
 )
-async def create_product(product: CreateProduct):
+async def create_product(product: CreateProduct, background_tasks: BackgroundTasks):
     """
     Создает новый товар.
     """
@@ -105,9 +108,22 @@ async def create_product(product: CreateProduct):
     new_product["id"] = new_product_id
     products.append(new_product)
 
-    # Добавляем Celery-задачу на отправку уведомления в Telegram
-    send_tg_notification.delay(product_name=new_product["name"], product_id=new_product_id)
-    
+    # Формируем сообщение для отправки в Telegram
+    telegram_message = f"""
+*Новый товар в магазине!*
+*Название:* {new_product['name']}
+*ID:* {new_product_id}
+*Описание:* {new_product['description']}
+http://127.0.0.1:8000/products/{new_product_id}
+
+```json
+{product.model_dump_json(indent=2, ensure_ascii=False)}
+```
+"""
+
+    # Фоновая задача - отправка уведомления в Telegram
+    background_tasks.add_task(send_telegram_message, telegram_message)
+
     return new_product
 
 
