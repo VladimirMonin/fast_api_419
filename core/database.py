@@ -1,16 +1,56 @@
 # core/database.py
-
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from math import e
+from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from core.config import settings
-
+from typing import TypeVar, Callable, Coroutine, Any
 import asyncio
+from functools import wraps
 
 # Импортируем модели для регистрации в Base.metadata
 from models.base import Base  # Импортируем Base из пакета models
-from models.product import Product  # noqa: F401
+from models.product import Product as ProductORM, Category as CategoryORM, Tag as TagORM
+from schemas.product import (
+    CategoryCreate,
+    Category,
+    TagCreate,
+    Tag,
+    ProductCreate,
+    ProductUpdate,
+    Product,
+)
 
 # URL для подключения к асинхронной SQLite
 DATABASE_URL = settings.DATABASE_URL
+
+
+def async_with_transaction(
+    func: Callable[..., Coroutine[Any, Any, Any]],
+) -> Callable[..., Coroutine[Any, Any, Any]]:
+    """
+    Асинхронный декоратор для автоматической обработки транзакций.
+
+    - Использует `async with` для асинхронного получения сессии.
+    - Вызывает оборачиваемую функцию с `await`.
+    - Выполняет `await session.commit()` при успехе.
+    - Выполняет `await session.rollback()` при ошибке.
+    """
+
+    @wraps(func)
+    async def wrapper(
+        session_factory: async_sessionmaker[AsyncSession], *args, **kwargs
+    ):
+        async with session_factory() as session:
+            try:
+                result = await func(session, *args, **kwargs)
+                await session.commit()
+                return result
+            except Exception:
+                await session.rollback()
+                raise
+
+    return wrapper
 
 
 # Cоздание асинхронного движка базы данных
@@ -21,60 +61,419 @@ engine = create_async_engine(DATABASE_URL, echo=True)
 AsyncSessionLocal = async_sessionmaker(
     # bind - это движок, с которым будут работать сессии
     # expire_on_commit=False - отключает автоматическое обновление объектов после коммита
+    # если его не отключить, то после каждого коммита надо будет повторно загружать объекты из базы
     bind=engine,
     expire_on_commit=False,
+    class_=AsyncSession,  # Используем асинхронную сессию
 )
 
-# Стартовая инициализация базы данных
-# ВАЖНО. Оно не отслеживает изменения моделей автоматически. Это просто стартер. Он не изменит ваши таблицы при изменении моделей. Создаст таблицу если её нет. Если есть - пропустит.
+# AsyncSession - тип для аннотаций
+
+# Все синхронные запросы в бд станут асинхронными
+"""
+- `session.execute(stmt)` -> `await session.execute(stmt)`
+- `session.get(Model, id)` -> `await session.get(Model, id)`
+- `session.scalars(stmt).all()` -> `(await session.execute(stmt)).scalars().all()`
+- `session.flush()` -> `await session.flush()`
+- `session.refresh(obj)` -> `await session.refresh(obj)`
+- `session.delete(obj)` -> `await session.delete(obj)`
+- __Важно:__ `session.add(obj)` и `session.add_all([..])` __не требуют__ `await`, так как они просто регистрируют объекты в сессии, не делая I/O запроса."""
 
 
-async def init_db():
+######################## Create операции ########################
 
-    async with engine.begin() as conn:
-        # Для чистоты эксперимента будем удалять таблицы и пересоздавать их
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
 
-        # ВСЕ ЭКСПЕРИМЕНТЫ ТУТ В ФОРМАТЕ СКРИПТА!!!!!!
-        async with AsyncSessionLocal() as session:
-            product_1 = Product(
-                name="Коробка с Мисиксами",
-                description="Нужна помощь по дому? Нажмите кнопку, и появится Мисикс, готовый выполнить одно ваше поручение. Существование для него — боль, так что не затягивайте!",
-                image_url="/images/meeseeks-box.webp",
-                price_shmeckles=19.99,
-                price_flurbos=9.8,
+@async_with_transaction
+async def tag_create(session: AsyncSession, tag_data: TagCreate) -> Tag:
+    """
+    Создание нового тега.
+
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param tag_data: Данные для создания тега
+    :return: Tag с id и name тега
+    """
+    # Проверка на уникальность имени
+    existing = await session.scalar(select(TagORM).where(TagORM.name == tag_data.name))
+
+    if existing:
+        # logger.warning(f"⚠️ Тег '{tag_data.name}' уже существует")
+        return Tag.model_validate(existing)
+
+    # Создаём новый тег
+    new_tag = TagORM(name=tag_data.name)
+
+    session.add(new_tag)
+    await session.flush()
+    await session.refresh(new_tag)
+
+    result = Tag.model_validate(new_tag)
+    # logger.info(f"✅ Тег создан: ID={result.id}, Name={result.name}")
+    return result
+
+
+@async_with_transaction
+async def category_create(
+    session: AsyncSession, category_data: CategoryCreate
+) -> Category:
+    """
+    Создание новой категории.
+
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param category_data: Данные для создания категории
+    :return: Category с id и name категории
+    """
+    # Проверка на уникальность имени
+    existing = await session.scalar(
+        select(CategoryORM).where(CategoryORM.name == category_data.name)
+    )
+
+    if existing:
+        # logger.warning(f"⚠️ Категория '{category_data.name}' уже существует")
+        return Category.model_validate(existing)
+
+    # Создаём новую категорию
+    new_category = CategoryORM(name=category_data.name)
+
+    session.add(new_category)
+    await session.flush()
+    await session.refresh(new_category)
+
+    result = Category.model_validate(new_category)
+    # logger.info(f"✅ Категория создана: ID={result.id}, Name={result.name}")
+    return result
+
+
+@async_with_transaction
+async def product_create(session: AsyncSession, product_data: ProductCreate) -> Product:
+    """
+    Создание нового продукта.
+
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param product_data: Данные для создания продукта
+    :return: Product с id, name, description, category и tags продукта
+    """
+
+    # Базовый продукт без связей
+    product_dict = product_data.model_dump(exclude={"category_id", "tag_ids"})
+    new_product = ProductORM(**product_dict)
+
+    # Связываем категорию, если указана
+    if product_data.category_id is not None:
+        category = await session.get(CategoryORM, product_data.category_id)
+        if category:
+            new_product.category = category
+
+        else:
+            raise ValueError(f"Категория с ID={product_data.category_id} не найдена")
+
+    # Связываем теги, если указаны
+    if product_data.tag_ids:
+        # Загружаем все теги одним запросом
+        tags_stmt = select(TagORM).where(TagORM.id.in_(product_data.tag_ids))
+        # ASK - А в чем разница между синх и асинх вариантом? У меня раньше было tags_stmt = select(TagORM).where(TagORM.id.in_(product_data.tag_ids)) tags_orm = session.execute(tags_stmt).scalars().all()
+        tags_orm = await session.scalars(tags_stmt)
+        tags_list = tags_orm.all()
+
+        # Проверяем, что все теги найдены
+        found_ids = {tag.id for tag in tags_list}
+        missing_ids = set(product_data.tag_ids) - found_ids
+
+        if missing_ids:
+            raise ValueError(f"Теги с ID={missing_ids} не найдены")
+
+        # Связываем теги с продуктом
+        new_product.tags = list(tags_list)
+
+    # Сохраняем продукт в базе
+    session.add(new_product)
+    await session.flush()
+
+    # Мы не обойдемся refresh - так как он отрабатывает ТОЛЬКО одну таблицу. Нам нужна явная загрузка связей
+    stmt = (
+        select(ProductORM)
+        .where(ProductORM.id == new_product.id)
+        .options(selectinload(ProductORM.category), selectinload(ProductORM.tags))
+    )
+
+    # Выполняем запрос и получаем один полностью загруженный объект
+    refreshed_product_with_relations = await session.scalar(stmt)
+
+    # Валидируем и пакуем в Pydantic модель
+    result = Product.model_validate(refreshed_product_with_relations)
+    return result
+
+
+######################## Delete операции ########################
+
+
+@async_with_transaction
+async def category_delete(session: AsyncSession, category_id: int) -> None:
+    """
+    Удаление категории по ID.
+
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param category_id: ID категории для удаления
+    """
+    category = await session.get(CategoryORM, category_id)
+    if not category:
+        raise ValueError(f"Категория с ID={category_id} не найдена")
+
+    await session.delete(category)
+    # logger.info(f"✅ Категория с ID={category_id} удалёна")
+
+
+@async_with_transaction
+async def tag_delete(session: AsyncSession, tag_id: int) -> None:
+    """
+    Удаление тега по ID.
+
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param tag_id: ID тега для удаления
+    """
+    tag = await session.get(TagORM, tag_id)
+    if not tag:
+        raise ValueError(f"Тег с ID={tag_id} не найден")
+
+    await session.delete(tag)
+    # logger.info(f"✅ Тег с ID={tag_id} удалён")
+
+
+@async_with_transaction
+async def product_delete(session: AsyncSession, product_id: int) -> None:
+    """
+    Удаление продукта по ID.
+
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param product_id: ID продукта для удаления
+    """
+    product = await session.get(ProductORM, product_id)
+    if not product:
+        raise ValueError(f"Продукт с ID={product_id} не найден")
+
+    await session.delete(product)
+    # logger.info(f"✅ Продукт с ID={product_id} удалён")
+
+
+######################## Read операции ########################
+# Категория, тег, продукт по ID
+# Все категории, теги, продукты
+# Продукт like name
+
+
+@async_with_transaction
+async def category_get_by_id(session: AsyncSession, category_id: int) -> Category:
+    """
+    Получение категории по ID.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param category_id: ID категории для получения
+    :return: Category с id и name категории
+    """
+    category = await session.get(CategoryORM, category_id)
+    if not category:
+        raise ValueError(f"Категория с ID={category_id} не найдена")
+    return Category.model_validate(category)
+
+
+@async_with_transaction
+async def tag_get_by_id(session: AsyncSession, tag_id: int) -> Tag:
+    """
+    Получение тега по ID.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param tag_id: ID тега для получения
+    :return: Tag с id и name тега
+    """
+    tag = await session.get(TagORM, tag_id)
+    if not tag:
+        raise ValueError(f"Тег с ID={tag_id} не найден")
+    return Tag.model_validate(tag)
+
+
+@async_with_transaction
+async def product_get_by_id(session: AsyncSession, product_id: int) -> Product:
+    """
+    Получение продукта по ID.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param product_id: ID продукта для получения
+    :return: Product с id, name, description, category и tags продукта
+    """
+    stmt = (
+        select(ProductORM)
+        .where(ProductORM.id == product_id)
+        .options(selectinload(ProductORM.category), selectinload(ProductORM.tags))
+    )
+    product = await session.scalar(stmt)
+    if not product:
+        raise ValueError(f"Продукт с ID={product_id} не найден")
+    return Product.model_validate(product)
+
+
+@async_with_transaction
+async def categories_get_all(session: AsyncSession) -> list[Category]:
+    """
+    Получение всех категорий.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :return: Список всех категорий
+    """
+    stmt = select(CategoryORM)
+    categories = await session.scalars(stmt)
+    return [Category.model_validate(cat) for cat in categories]
+
+
+@async_with_transaction
+async def tags_get_all(session: AsyncSession) -> list[Tag]:
+    """
+    Получение всех тегов.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :return: Список всех тегов
+    """
+    stmt = select(TagORM)
+    tags = await session.scalars(stmt)
+    return [Tag.model_validate(tag) for tag in tags]
+
+
+@async_with_transaction
+async def products_get_all(session: AsyncSession) -> list[Product]:
+    """
+    Получение всех продуктов и связанных данных.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :return: Список всех продуктов с категориями и тегами
+    """
+    stmt = select(ProductORM).options(
+        selectinload(ProductORM.category), selectinload(ProductORM.tags)
+    )
+    products = await session.scalars(stmt)
+    return [Product.model_validate(prod) for prod in products]
+
+
+@async_with_transaction
+async def products_get_like_name(
+    session: AsyncSession, name_substring: str
+) -> list[Product]:
+    """
+    Расширенный поиск продуктов по названию, категории или тегам.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param name_substring: Подстрока для поиска вхождения в имя продукта или в имя категории/тега
+    """
+    stmt = (
+        select(ProductORM)
+        .outerjoin(ProductORM.category)
+        .outerjoin(ProductORM.tags)
+        .where(
+            or_(
+                ProductORM.name.ilike(f"%{name_substring}%"),
+                CategoryORM.name.ilike(f"%{name_substring}%"),
+                TagORM.name.ilike(f"%{name_substring}%"),
             )
+        )
+        # Важно явно использовать options для загрузки связей
+        # Потому что join \ outerjoin - для where, а options - для загрузки связей
+    ).options(selectinload(ProductORM.category), selectinload(ProductORM.tags))
 
-            product_2 = Product(
-                name="Портальная пушка (б/у)",
-                description="легка поцарапана, заряд портальной жидкости на 37%. Возврату не подлежит. Может пахнуть приключениями и чужими измерениями. Осторожно: привлекает внимание Цитадели.",
-                image_url="/images/portal-gun.webp",
-                price_shmeckles=9999.99,
-                price_flurbos=4999.99,
-            )
-
-            # session.add - добавит 1 позицию
-            # session.add_all - добавит пачку объектов
-            session.add_all([product_1, product_2])
-            await session.commit()
-
-        # Выборка по ID - новый контекст для сессии (потому что предыдущий был закрыт commit-ом)
-        async with AsyncSessionLocal() as session:
-            result = await session.get(Product, 2)
-            print(f"Product ID 1: {result.name}, Price: {result.price_shmeckles} шмекелей")
-
-            # Обновление объекта
-            result.name = "Портальная пушка (как новая)"
-            await session.commit()
-
-        # Удаление по ID - новый контекст для сессии
-        async with AsyncSessionLocal() as session:
-            result = await session.get(Product, 1)
-            await session.delete(result)
-            await session.commit()
+    products = await session.scalars(stmt)
+    return [Product.model_validate(prod) for prod in products]
 
 
+######################## Update операции ########################
 
-if __name__ == "__main__":
-    asyncio.run(init_db())
+
+@async_with_transaction
+async def category_update(session: AsyncSession, category_data: Category) -> Category:
+    """
+    Обновление категории по ID.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param category_id: ID категории для обновления
+    :param category_data: Данные для обновления категории
+    :return: Обновлённая категория
+    """
+    category = await session.get(CategoryORM, category_data.id)
+    if not category:
+        raise ValueError(f"Категория с ID={category_data.id} не найдена")
+
+    for field, value in category_data.model_dump().items():
+        setattr(category, field, value)
+
+    return Category.model_validate(category)
+
+
+@async_with_transaction
+async def tag_update(session: AsyncSession, tag_data: Tag) -> Tag:
+    """
+    Обновление тега по ID.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param tag_id: ID тега для обновления
+    :param tag_data: Данные для обновления тега
+    :return: Обновлённый тег
+    """
+    tag = await session.get(TagORM, tag_data.id)
+    if not tag:
+        raise ValueError(f"Тег с ID={tag_data.id} не найден")
+
+    for field, value in tag_data.model_dump().items():
+        setattr(tag, field, value)
+
+    return Tag.model_validate(tag)
+
+
+@async_with_transaction
+async def product_update(session: AsyncSession, product_data: ProductUpdate) -> Product:
+    """
+    Обновление продукта по ID включая связи.
+    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param product_data: Данные для обновления продукта
+    :return: Обновлённый продукт
+    """
+    # Получаем существующий продукт
+    product = await session.get(ProductORM, product_data.id)
+    if not product:
+        raise ValueError(f"Продукт с ID={product_data.id} не найден")
+
+    # Обновляем поля продукта через распаковку DTO
+    product_dict = product_data.model_dump(exclude={"category_id", "tag_ids"})
+    for key, value in product_dict.items():
+        setattr(product, key, value)
+
+    # Обновляем категорию, если указана
+    if product_data.category_id is not None:
+        category = await session.get(CategoryORM, product_data.category_id)
+        if category:
+            product.category = category
+        else:
+            raise ValueError(f"Категория с ID={product_data.category_id} не найдена")
+
+    else:
+        # Если category_id не указан, отвязываем категорию
+        product.category = None
+
+    # Обновляем теги, если указаны
+    if product_data.tag_ids is not None:
+        # Загружаем все теги одним запросом
+        tags_stmt = select(TagORM).where(TagORM.id.in_(product_data.tag_ids))
+        tags_orm = await session.scalars(tags_stmt)
+        tags_list = tags_orm.all()
+
+        # Проверяем, что все теги найдены
+        found_ids = {tag.id for tag in tags_list}
+        missing_ids = set(product_data.tag_ids) - found_ids
+
+        if missing_ids:
+            raise ValueError(f"Теги с ID={missing_ids} не найдены")
+
+        # Связываем теги с продуктом
+        product.tags = list(tags_list)
+    else:
+        # Если передан пустой список, отвязываем все теги
+        product.tags = []
+
+    # Сохраняем без закрытия сессии
+    await session.flush()
+
+    # Загружаем обновлённый продукт с связями жадной загрузкой
+    stmt = (
+        select(ProductORM)
+        .where(ProductORM.id == product.id)
+        .options(selectinload(ProductORM.category), selectinload(ProductORM.tags))
+    )
+
+    result = await session.scalars(stmt)
+    updated_product = result.one()
+    return Product.model_validate(updated_product)
