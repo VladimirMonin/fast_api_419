@@ -1,11 +1,9 @@
 # core/database.py
-from math import e
 from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from core.config import settings
-from typing import TypeVar, Callable, Coroutine, Any
-import asyncio
+from typing import Callable, Coroutine, Any
 from functools import wraps
 
 # Импортируем модели для регистрации в Base.metadata

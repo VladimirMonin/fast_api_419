@@ -23,8 +23,8 @@
 - Обновить `requirements.txt`
 
 **Действия:**
-- [ ] Удалить директорию `tasks/` (Celery задачи)
-- [ ] Убрать зависимости из `requirements.txt`: celery, redis, amqp, billiard, kombu, vine
+- [x] Удалить директорию `tasks/` (Celery задачи)
+- [x] Убрать зависимости из `requirements.txt`: celery, redis, amqp, billiard, kombu, vine
 
 **Коммит:** `Задача: Удалены зависимости Celery и Redis`
 
