@@ -1,34 +1,22 @@
 # routes/products.py
-from typing import List
+from typing import List, Optional
 
-import telegram
-from schemas.product import Product, ProductCreate
-from data import products
+from schemas.product import Product, ProductCreate, ProductUpdate
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from utils.telegram_bot import send_telegram_message
 from core.database import (
     get_db_session,
-    tag_create,
-    category_create,
     product_create,
-    category_delete,
-    tag_delete,
     product_delete,
-    category_get_by_id,
-    tag_get_by_id,
     product_get_by_id,
-    categories_get_all,
-    tags_get_all,
     products_get_all,
     products_get_like_name,
-    category_update,
-    tag_update,
     product_update,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 # --- Маршруты API для работы с товарами ---
 
-router = APIRouter()
+router = APIRouter(prefix="/products", tags=["Products"])
 
 
 # 1. Получение данных о товаре (детальный просмотр)
@@ -59,53 +47,48 @@ async def get_product(product_id: int, session: AsyncSession = Depends(get_db_se
     response_model=List[Product],
     summary="Получить список всех товаров",
 )
-async def list_products(search: str = "", sort: str = "", has_image: bool = False):
+async def list_products(
+    session: AsyncSession = Depends(get_db_session),
+    search: Optional[str] = None,
+    sort: Optional[str] = None,
+    has_image: bool = False,
+):
     """
     Возвращает список всех товаров с возможностью фильтрации и сортировки.
     - **search**: Поиск по названию и описанию товара.
     - **sort**: Сортировка по цене. Формат: `currency_direction` (например, `credits_asc`, `shmeckles_desc`).
     - **has_image**: Если True, возвращаются только товары с изображениями.
     """
-    filtered_products = products
-    # products/?search=ПлЮмБуС
-    # Фильтрация по поисковому запросу
-    if search:
-        filtered_products = [
-            item
-            for item in filtered_products
-            if search.lower() in item["name"].lower()
-            or search.lower() in item["description"].lower()
-        ]
+    try:
+        if search:
+            products = await products_get_like_name(session, search)
+        else:
+            products = await products_get_all(session)
 
-    # Фильтрация по наличию изображения
-    if has_image:
-        filtered_products = [item for item in filtered_products if item["image_url"]]
+        if has_image:
+            products = [product for product in products if product.image_url]
 
-    # Сортировка по цене
-    # products/?sort=credits_asc
-    # products/?sort=shmeckles_desc
-    if sort:
-        try:
+        if sort:
             currency, direction = sort.split("_")
             reverse = direction == "desc"
-            # sort - метод списка
-            # key - ключ сортировки, принимает функцию
-            # item - каждый словарь с товаром
-            # item["prices"] - вложенный словарь с ценами
-            # currency - ключ валюты из параметра запроса
-            # float('inf') - бесконечность, чтобы товары без указанной валюты оказались в конце списка
-
-            filtered_products.sort(
-                key=lambda item: item["prices"].get(currency, float("inf")),
-                reverse=reverse,
-            )
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="Неверный формат параметра sort. Используйте 'currency_direction'.",
-            )
-
-    return filtered_products
+            if currency == "shmeckles":
+                products.sort(
+                    key=lambda item: item.price_shmeckles if item.price_shmeckles is not None else float("inf"),
+                    reverse=reverse,
+                )
+            elif currency == "flurbos":
+                products.sort(
+                    key=lambda item: item.price_flurbos if item.price_flurbos is not None else float("inf"),
+                    reverse=reverse,
+                )
+            else:
+                raise HTTPException(status_code=400, detail="Неверная валюта для сортировки. Используйте 'shmeckles' или 'flurbos'.")
+        return products
+    #TODO: уточнить ошибки, модифицировать функцию запрос В БД - чтобы небыло утечки ответственности
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении списка товаров: {e}")
 
 
 @router.post(
@@ -152,38 +135,46 @@ http://127.0.0.1:8000/products/{new_product.id}
 
 # PUT
 @router.put(
-    "/update/{product_id}",
+    "/{product_id}",
     response_model=Product,
     summary="Обновить данные о товаре",
 )
-async def update_product(product_id: int, updated_product: ProductCreate):
+async def update_product(
+    product_id: int,
+    updated_product: ProductCreate,
+    session: AsyncSession = Depends(get_db_session),
+):
     """
     Обновляет данные о товаре по его ID.
     """
-    # Формируем кортеж формата (индекс, товар) для каждого товара в списке
-    for index, item in enumerate(products):
-        # Мы нашли нужный товар по ID
-        if item["id"] == product_id:
-            # Обновляем товар, сохраняя его ID
-            updated_data = updated_product.model_dump()
-            updated_data["id"] = product_id
-            products[index] = updated_data
-            return products[index]
-    raise HTTPException(status_code=404, detail="Товар не найден")
+    try:
+        # Создаем объект ProductUpdate с ID из URL и данными из тела запроса
+        product_update_data = ProductUpdate(
+            id=product_id,
+            **updated_product.model_dump()
+        )
+        product = await product_update(session, product_update_data)
+        return product
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при обновлении товара: {e}")
 
 
 # DELETE
 @router.delete(
-    "/delete/{product_id}",
+    "/{product_id}",
     response_model=int,
     summary="Удалить товар",
 )
-async def delete_product(product_id: int):
+async def delete_product(product_id: int, session: AsyncSession = Depends(get_db_session)):
     """
     Удаляет товар по его ID.
     """
-    for index, item in enumerate(products):
-        if item["id"] == product_id:
-            products.pop(index)
-            return product_id
-    raise HTTPException(status_code=404, detail="Товар не найден")
+    try:
+        deleted_product_id = await product_delete(session, product_id)
+        return deleted_product_id
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при удалении товара: {e}")

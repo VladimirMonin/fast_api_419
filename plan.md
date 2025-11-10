@@ -132,7 +132,7 @@
 
 **Коммит:** `Задача: Настроен жизненный цикл (lifespan) и CORS`
 
-### Этап 4: Интеграция роутов с БД (`routes/products.py`)
+### Этап 4: Интеграция роутов с БД (`routes/products.py`) ✅ ВЫПОЛНЕНО
 
 Это сердце всей нашей работы. Сейчас роуты (эндпоинты) в файле `routes/products.py` берут данные из временного, захардкоженного списка `products`. На этом этапе мы наконец-то подключаем их к настоящей базе данных.
 
@@ -144,11 +144,15 @@
 - `routes/products.py`
 
 **Действия:**
-- [ ] Удалить `from data import products`
-- [ ] Импортировать `Depends`, `AsyncSession`, `get_db_session` и CRUD-функции
-- [ ] Добавить в каждый роут аргумент `session: AsyncSession = Depends(get_db_session)`
-- [ ] Переписать логику роутов на использование CRUD-функций
-- [ ] Добавить обработку ошибок `ValueError` с преобразованием в `HTTPException`
+- [x] Удалить `from data import products`
+- [x] Импортировать `Depends`, `AsyncSession`, `get_db_session` и CRUD-функции
+- [x] Добавить в каждый роут аргумент `session: AsyncSession = Depends(get_db_session)`
+- [x] Переписать логику роутов на использование CRUD-функций
+- [x] Добавить обработку ошибок `ValueError` с преобразованием в `HTTPException`
+- [x] Обновить определение `APIRouter` с `prefix` и `tags`
+- [x] Исправить ошибку с `item.prices.get` в `list_products`
+- [x] Исправить ошибку с `product.model_dump_json` в `create_product`
+- [x] Исправить ошибку с `product_update` (ожидаемые аргументы: 2)
 
 **Коммит:** `Задача: Роуты интегрированы с базой данных`
 
