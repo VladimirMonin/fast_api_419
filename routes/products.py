@@ -15,7 +15,7 @@ from core.database import (
 from sqlalchemy.ext.asyncio import AsyncSession
 # --- Маршруты API для работы с товарами ---
 
-router = APIRouter(prefix="/products", tags=["Products"])
+router = APIRouter()
 
 
 # 1. Получение данных о товаре (детальный просмотр)
@@ -66,7 +66,9 @@ async def list_products(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при получении списка товаров: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при получении списка товаров: {e}"
+        )
 
 
 @router.post(
@@ -128,15 +130,16 @@ async def update_product(
     try:
         # Создаем объект ProductUpdate с ID из URL и данными из тела запроса
         product_update_data = ProductUpdate(
-            id=product_id,
-            **updated_product.model_dump()
+            id=product_id, **updated_product.model_dump()
         )
         product = await product_update(session, product_update_data)
         return product
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при обновлении товара: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при обновлении товара: {e}"
+        )
 
 
 # DELETE
@@ -145,7 +148,9 @@ async def update_product(
     response_model=int,
     summary="Удалить товар",
 )
-async def delete_product(product_id: int, session: AsyncSession = Depends(get_db_session)):
+async def delete_product(
+    product_id: int, session: AsyncSession = Depends(get_db_session)
+):
     """
     Удаляет товар по его ID.
     """

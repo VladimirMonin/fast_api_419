@@ -97,7 +97,6 @@ async def tag_create(session: AsyncSession, tag_data: TagCreate) -> Tag:
     return result
 
 
-
 async def category_create(
     session: AsyncSession, category_data: CategoryCreate
 ) -> Category:
@@ -127,7 +126,6 @@ async def category_create(
     result = Category.model_validate(new_category)
     # logger.info(f"✅ Категория создана: ID={result.id}, Name={result.name}")
     return result
-
 
 
 async def product_create(session: AsyncSession, product_data: ProductCreate) -> Product:
@@ -192,7 +190,6 @@ async def product_create(session: AsyncSession, product_data: ProductCreate) -> 
 ######################## Delete операции ########################
 
 
-
 async def category_delete(session: AsyncSession, category_id: int) -> None:
     """
     Удаление категории по ID.
@@ -208,7 +205,6 @@ async def category_delete(session: AsyncSession, category_id: int) -> None:
     # logger.info(f"✅ Категория с ID={category_id} удалёна")
 
 
-
 async def tag_delete(session: AsyncSession, tag_id: int) -> None:
     """
     Удаление тега по ID.
@@ -222,7 +218,6 @@ async def tag_delete(session: AsyncSession, tag_id: int) -> None:
 
     await session.delete(tag)
     # logger.info(f"✅ Тег с ID={tag_id} удалён")
-
 
 
 async def product_delete(session: AsyncSession, product_id: int) -> None:
@@ -246,7 +241,6 @@ async def product_delete(session: AsyncSession, product_id: int) -> None:
 # Продукт like name
 
 
-
 async def category_get_by_id(session: AsyncSession, category_id: int) -> Category:
     """
     Получение категории по ID.
@@ -260,7 +254,6 @@ async def category_get_by_id(session: AsyncSession, category_id: int) -> Categor
     return Category.model_validate(category)
 
 
-
 async def tag_get_by_id(session: AsyncSession, tag_id: int) -> Tag:
     """
     Получение тега по ID.
@@ -272,7 +265,6 @@ async def tag_get_by_id(session: AsyncSession, tag_id: int) -> Tag:
     if not tag:
         raise ValueError(f"Тег с ID={tag_id} не найден")
     return Tag.model_validate(tag)
-
 
 
 async def product_get_by_id(session: AsyncSession, product_id: int) -> Product:
@@ -293,7 +285,6 @@ async def product_get_by_id(session: AsyncSession, product_id: int) -> Product:
     return Product.model_validate(product)
 
 
-
 async def categories_get_all(session: AsyncSession) -> list[Category]:
     """
     Получение всех категорий.
@@ -304,6 +295,17 @@ async def categories_get_all(session: AsyncSession) -> list[Category]:
     categories = await session.scalars(stmt)
     return [Category.model_validate(cat) for cat in categories]
 
+
+async def category_has_products(session: AsyncSession, category_id: int) -> bool:
+    """
+    Проверка наличия продуктов, связанных с категорией.
+    :param session: Асинхронная сессия SQLAlchemy
+    :param category_id: ID категории для проверки
+    :return: True если есть связанные продукты, False если нет
+    """
+    stmt = select(ProductORM).where(ProductORM.category_id == category_id).limit(1)
+    result = await session.scalar(stmt)
+    return result is not None
 
 
 async def tags_get_all(session: AsyncSession) -> list[Tag]:
@@ -317,7 +319,6 @@ async def tags_get_all(session: AsyncSession) -> list[Tag]:
     return [Tag.model_validate(tag) for tag in tags]
 
 
-
 async def products_get_all(session: AsyncSession) -> list[Product]:
     """
     Получение всех продуктов и связанных данных.
@@ -329,7 +330,6 @@ async def products_get_all(session: AsyncSession) -> list[Product]:
     )
     products = await session.scalars(stmt)
     return [Product.model_validate(prod) for prod in products]
-
 
 
 async def products_get_like_name(
@@ -363,11 +363,11 @@ async def products_get_with_filters(
     session: AsyncSession,
     search: Optional[str] = None,
     sort: Optional[str] = None,
-    has_image: bool = False
+    has_image: bool = False,
 ) -> list[Product]:
     """
     Получение продуктов с фильтрацией и сортировкой.
-    
+
     :param session: Асинхронная сессия SQLAlchemy
     :param search: Поиск по названию, категории или тегам
     :param sort: Сортировка по цене в формате "currency_direction" (например, "shmeckles_asc", "flurbos_desc")
@@ -378,51 +378,60 @@ async def products_get_with_filters(
     stmt = select(ProductORM).options(
         selectinload(ProductORM.category), selectinload(ProductORM.tags)
     )
-    
+
     # Применяем поиск, если указан
     if search:
-        stmt = stmt.outerjoin(ProductORM.category).outerjoin(ProductORM.tags).where(
-            or_(
-                ProductORM.name.ilike(f"%{search}%"),
-                CategoryORM.name.ilike(f"%{search}%"),
-                TagORM.name.ilike(f"%{search}%"),
+        stmt = (
+            stmt.outerjoin(ProductORM.category)
+            .outerjoin(ProductORM.tags)
+            .where(
+                or_(
+                    ProductORM.name.ilike(f"%{search}%"),
+                    CategoryORM.name.ilike(f"%{search}%"),
+                    TagORM.name.ilike(f"%{search}%"),
+                )
             )
         )
-    
+
     # Выполняем запрос
     products_result = await session.scalars(stmt)
     products = [Product.model_validate(prod) for prod in products_result]
-    
+
     # Применяем фильтр по изображениям
     if has_image:
         products = [product for product in products if product.image_url]
-    
+
     # Применяем сортировку, если указана
     if sort:
         try:
             currency, direction = sort.split("_")
             reverse = direction == "desc"
-            
+
             if currency == "shmeckles":
                 products.sort(
-                    key=lambda item: item.price_shmeckles if item.price_shmeckles is not None else float("inf"),
+                    key=lambda item: item.price_shmeckles
+                    if item.price_shmeckles is not None
+                    else float("inf"),
                     reverse=reverse,
                 )
             elif currency == "flurbos":
                 products.sort(
-                    key=lambda item: item.price_flurbos if item.price_flurbos is not None else float("inf"),
+                    key=lambda item: item.price_flurbos
+                    if item.price_flurbos is not None
+                    else float("inf"),
                     reverse=reverse,
                 )
             else:
-                raise ValueError("Неверная валюта для сортировки. Используйте 'shmeckles' или 'flurbos'.")
+                raise ValueError(
+                    "Неверная валюта для сортировки. Используйте 'shmeckles' или 'flurbos'."
+                )
         except ValueError as e:
             raise ValueError(f"Неверный формат параметра sort: {e}")
-    
+
     return products
 
 
 ######################## Update операции ########################
-
 
 
 async def category_update(session: AsyncSession, category_data: Category) -> Category:
@@ -443,7 +452,6 @@ async def category_update(session: AsyncSession, category_data: Category) -> Cat
     return Category.model_validate(category)
 
 
-
 async def tag_update(session: AsyncSession, tag_data: Tag) -> Tag:
     """
     Обновление тега по ID.
@@ -460,7 +468,6 @@ async def tag_update(session: AsyncSession, tag_data: Tag) -> Tag:
         setattr(tag, field, value)
 
     return Tag.model_validate(tag)
-
 
 
 async def product_update(session: AsyncSession, product_data: ProductUpdate) -> Product:
