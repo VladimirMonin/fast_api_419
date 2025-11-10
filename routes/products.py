@@ -2,12 +2,30 @@
 from typing import List
 
 import telegram
-from schemas.product import Product, CreateProduct
+from schemas.product import Product, ProductCreate
 from data import products
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from utils.telegram_bot import send_telegram_message
-
-
+from core.database import (
+    get_db_session,
+    tag_create,
+    category_create,
+    product_create,
+    category_delete,
+    tag_delete,
+    product_delete,
+    category_get_by_id,
+    tag_get_by_id,
+    product_get_by_id,
+    categories_get_all,
+    tags_get_all,
+    products_get_all,
+    products_get_like_name,
+    category_update,
+    tag_update,
+    product_update,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
 # --- Маршруты API для работы с товарами ---
 
 router = APIRouter()
@@ -18,18 +36,18 @@ router = APIRouter()
     "/{product_id}",
     response_model=Product,
     summary="Получить данные о товаре",
+    tags=["Products"],
 )
-async def get_product(product_id: int):
+async def get_product(product_id: int, session: AsyncSession = Depends(get_db_session)):
     """
     Возвращает данные о товаре по его ID.
     """
-    # product = next((item for item in products if item["id"] == product_id), None)
-    # Альтернативный способ поиска товара через list comprehension
+    # Делаем запрос к бд через product_get_by_id
     try:
-        product = [item for item in products if item["id"] == product_id][0]
-    except IndexError:
-        raise HTTPException(status_code=404, detail="Товар не найден")
-    return product
+        product = await product_get_by_id(session, product_id)
+        return product
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # 2. Получение списка всех товаров.
@@ -95,26 +113,31 @@ async def list_products(search: str = "", sort: str = "", has_image: bool = Fals
     response_model=Product,
     summary="Создать новый товар",
     status_code=201,
+    tags=["Products"],
 )
-async def create_product(product: CreateProduct, background_tasks: BackgroundTasks):
+async def create_product(
+    product: ProductCreate,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db_session),
+):
     """
     Создает новый товар.
     """
-    # Так как мы не работаем с БД - нам нужно найти максимальный ID в текущем списке товаров и увеличить его на 1
-    new_product_id = max(item["id"] for item in products) + 1 if products else 1
-
-    # Преобразуем модель Pydantic в словарь. Валидация уже выполнена автоматически
-    new_product = product.model_dump()
-    new_product["id"] = new_product_id
-    products.append(new_product)
+    # Пытаемся создать новый товар через product_create
+    try:
+        new_product = await product_create(session, product)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Формируем сообщение для отправки в Telegram
     telegram_message = f"""
 *Новый товар в магазине!*
-*Название:* {new_product['name']}
-*ID:* {new_product_id}
-*Описание:* {new_product['description']}
-http://127.0.0.1:8000/products/{new_product_id}
+*Название:* {new_product.name}
+*ID:* {new_product.id}
+*Описание:* {new_product.description}
+*Категория:* {new_product.category.name if new_product.category else "Без категории"}
+*Теги:* {", ".join(tag.name for tag in new_product.tags) if new_product.tags else "Нет тегов"}
+http://127.0.0.1:8000/products/{new_product.id}
 
 ```json
 {product.model_dump_json(indent=2, ensure_ascii=False)}
@@ -133,7 +156,7 @@ http://127.0.0.1:8000/products/{new_product_id}
     response_model=Product,
     summary="Обновить данные о товаре",
 )
-async def update_product(product_id: int, updated_product: CreateProduct):
+async def update_product(product_id: int, updated_product: ProductCreate):
     """
     Обновляет данные о товаре по его ID.
     """
