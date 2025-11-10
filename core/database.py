@@ -3,6 +3,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from core.config import settings
+from typing import AsyncGenerator, Optional
 
 # Импортируем модели для регистрации в Base.metadata
 from models.base import Base  # Импортируем Base из пакета models
@@ -21,8 +22,6 @@ from schemas.product import (
 DATABASE_URL = settings.DATABASE_URL
 
 
-
-
 # Cоздание асинхронного движка базы данных
 #  echo=True — включает логирование SQL-запросов в консоль
 engine = create_async_engine(DATABASE_URL, echo=True)
@@ -36,8 +35,6 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
     class_=AsyncSession,  # Используем асинхронную сессию
 )
-
-from typing import AsyncGenerator
 
 # AsyncSession - тип для аннотаций
 
@@ -360,6 +357,68 @@ async def products_get_like_name(
 
     products = await session.scalars(stmt)
     return [Product.model_validate(prod) for prod in products]
+
+
+async def products_get_with_filters(
+    session: AsyncSession,
+    search: Optional[str] = None,
+    sort: Optional[str] = None,
+    has_image: bool = False
+) -> list[Product]:
+    """
+    Получение продуктов с фильтрацией и сортировкой.
+    
+    :param session: Асинхронная сессия SQLAlchemy
+    :param search: Поиск по названию, категории или тегам
+    :param sort: Сортировка по цене в формате "currency_direction" (например, "shmeckles_asc", "flurbos_desc")
+    :param has_image: Если True, возвращаются только товары с изображениями
+    :return: Список продуктов с примененными фильтрами и сортировкой
+    """
+    # Базовый запрос с загрузкой связей
+    stmt = select(ProductORM).options(
+        selectinload(ProductORM.category), selectinload(ProductORM.tags)
+    )
+    
+    # Применяем поиск, если указан
+    if search:
+        stmt = stmt.outerjoin(ProductORM.category).outerjoin(ProductORM.tags).where(
+            or_(
+                ProductORM.name.ilike(f"%{search}%"),
+                CategoryORM.name.ilike(f"%{search}%"),
+                TagORM.name.ilike(f"%{search}%"),
+            )
+        )
+    
+    # Выполняем запрос
+    products_result = await session.scalars(stmt)
+    products = [Product.model_validate(prod) for prod in products_result]
+    
+    # Применяем фильтр по изображениям
+    if has_image:
+        products = [product for product in products if product.image_url]
+    
+    # Применяем сортировку, если указана
+    if sort:
+        try:
+            currency, direction = sort.split("_")
+            reverse = direction == "desc"
+            
+            if currency == "shmeckles":
+                products.sort(
+                    key=lambda item: item.price_shmeckles if item.price_shmeckles is not None else float("inf"),
+                    reverse=reverse,
+                )
+            elif currency == "flurbos":
+                products.sort(
+                    key=lambda item: item.price_flurbos if item.price_flurbos is not None else float("inf"),
+                    reverse=reverse,
+                )
+            else:
+                raise ValueError("Неверная валюта для сортировки. Используйте 'shmeckles' или 'flurbos'.")
+        except ValueError as e:
+            raise ValueError(f"Неверный формат параметра sort: {e}")
+    
+    return products
 
 
 ######################## Update операции ########################

@@ -9,8 +9,7 @@ from core.database import (
     product_create,
     product_delete,
     product_get_by_id,
-    products_get_all,
-    products_get_like_name,
+    products_get_with_filters,
     product_update,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,31 +59,10 @@ async def list_products(
     - **has_image**: Если True, возвращаются только товары с изображениями.
     """
     try:
-        if search:
-            products = await products_get_like_name(session, search)
-        else:
-            products = await products_get_all(session)
-
-        if has_image:
-            products = [product for product in products if product.image_url]
-
-        if sort:
-            currency, direction = sort.split("_")
-            reverse = direction == "desc"
-            if currency == "shmeckles":
-                products.sort(
-                    key=lambda item: item.price_shmeckles if item.price_shmeckles is not None else float("inf"),
-                    reverse=reverse,
-                )
-            elif currency == "flurbos":
-                products.sort(
-                    key=lambda item: item.price_flurbos if item.price_flurbos is not None else float("inf"),
-                    reverse=reverse,
-                )
-            else:
-                raise HTTPException(status_code=400, detail="Неверная валюта для сортировки. Используйте 'shmeckles' или 'flurbos'.")
+        products = await products_get_with_filters(
+            session, search=search, sort=sort, has_image=has_image
+        )
         return products
-    #TODO: уточнить ошибки, модифицировать функцию запрос В БД - чтобы небыло утечки ответственности
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -172,8 +150,8 @@ async def delete_product(product_id: int, session: AsyncSession = Depends(get_db
     Удаляет товар по его ID.
     """
     try:
-        deleted_product_id = await product_delete(session, product_id)
-        return deleted_product_id
+        await product_delete(session, product_id)
+        return product_id
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
