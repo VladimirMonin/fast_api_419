@@ -3,8 +3,6 @@ from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from core.config import settings
-from typing import Callable, Coroutine, Any
-from functools import wraps
 
 # Импортируем модели для регистрации в Base.metadata
 from models.base import Base  # Импортируем Base из пакета models
@@ -23,32 +21,6 @@ from schemas.product import (
 DATABASE_URL = settings.DATABASE_URL
 
 
-def async_with_transaction(
-    func: Callable[..., Coroutine[Any, Any, Any]],
-) -> Callable[..., Coroutine[Any, Any, Any]]:
-    """
-    Асинхронный декоратор для автоматической обработки транзакций.
-
-    - Использует `async with` для асинхронного получения сессии.
-    - Вызывает оборачиваемую функцию с `await`.
-    - Выполняет `await session.commit()` при успехе.
-    - Выполняет `await session.rollback()` при ошибке.
-    """
-
-    @wraps(func)
-    async def wrapper(
-        session_factory: async_sessionmaker[AsyncSession], *args, **kwargs
-    ):
-        async with session_factory() as session:
-            try:
-                result = await func(session, *args, **kwargs)
-                await session.commit()
-                return result
-            except Exception:
-                await session.rollback()
-                raise
-
-    return wrapper
 
 
 # Cоздание асинхронного движка базы данных
@@ -65,6 +37,8 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,  # Используем асинхронную сессию
 )
 
+from typing import AsyncGenerator
+
 # AsyncSession - тип для аннотаций
 
 # Все синхронные запросы в бд станут асинхронными
@@ -78,15 +52,32 @@ AsyncSessionLocal = async_sessionmaker(
 - __Важно:__ `session.add(obj)` и `session.add_all([..])` __не требуют__ `await`, так как они просто регистрируют объекты в сессии, не делая I/O запроса."""
 
 
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Функция-зависимость FastAPI для получения асинхронной сессии базы данных.
+
+    Каждый запрос будет получать свою сессию, которая будет автоматически закрыта
+    после завершения запроса (или при возникновении ошибки).
+
+    Когда fastAPI видит что зависимость является асинхронным генератором, активирует механизм. Код до yield выполняется при входе в зависимость, а код после yield - при выходе из зависимости.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
 ######################## Create операции ########################
 
 
-@async_with_transaction
 async def tag_create(session: AsyncSession, tag_data: TagCreate) -> Tag:
     """
     Создание нового тега.
 
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param tag_data: Данные для создания тега
     :return: Tag с id и name тега
     """
@@ -109,14 +100,14 @@ async def tag_create(session: AsyncSession, tag_data: TagCreate) -> Tag:
     return result
 
 
-@async_with_transaction
+
 async def category_create(
     session: AsyncSession, category_data: CategoryCreate
 ) -> Category:
     """
     Создание новой категории.
 
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param category_data: Данные для создания категории
     :return: Category с id и name категории
     """
@@ -141,12 +132,12 @@ async def category_create(
     return result
 
 
-@async_with_transaction
+
 async def product_create(session: AsyncSession, product_data: ProductCreate) -> Product:
     """
     Создание нового продукта.
 
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param product_data: Данные для создания продукта
     :return: Product с id, name, description, category и tags продукта
     """
@@ -204,12 +195,12 @@ async def product_create(session: AsyncSession, product_data: ProductCreate) -> 
 ######################## Delete операции ########################
 
 
-@async_with_transaction
+
 async def category_delete(session: AsyncSession, category_id: int) -> None:
     """
     Удаление категории по ID.
 
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param category_id: ID категории для удаления
     """
     category = await session.get(CategoryORM, category_id)
@@ -220,12 +211,12 @@ async def category_delete(session: AsyncSession, category_id: int) -> None:
     # logger.info(f"✅ Категория с ID={category_id} удалёна")
 
 
-@async_with_transaction
+
 async def tag_delete(session: AsyncSession, tag_id: int) -> None:
     """
     Удаление тега по ID.
 
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param tag_id: ID тега для удаления
     """
     tag = await session.get(TagORM, tag_id)
@@ -236,12 +227,12 @@ async def tag_delete(session: AsyncSession, tag_id: int) -> None:
     # logger.info(f"✅ Тег с ID={tag_id} удалён")
 
 
-@async_with_transaction
+
 async def product_delete(session: AsyncSession, product_id: int) -> None:
     """
     Удаление продукта по ID.
 
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param product_id: ID продукта для удаления
     """
     product = await session.get(ProductORM, product_id)
@@ -258,11 +249,11 @@ async def product_delete(session: AsyncSession, product_id: int) -> None:
 # Продукт like name
 
 
-@async_with_transaction
+
 async def category_get_by_id(session: AsyncSession, category_id: int) -> Category:
     """
     Получение категории по ID.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param category_id: ID категории для получения
     :return: Category с id и name категории
     """
@@ -272,11 +263,11 @@ async def category_get_by_id(session: AsyncSession, category_id: int) -> Categor
     return Category.model_validate(category)
 
 
-@async_with_transaction
+
 async def tag_get_by_id(session: AsyncSession, tag_id: int) -> Tag:
     """
     Получение тега по ID.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param tag_id: ID тега для получения
     :return: Tag с id и name тега
     """
@@ -286,11 +277,11 @@ async def tag_get_by_id(session: AsyncSession, tag_id: int) -> Tag:
     return Tag.model_validate(tag)
 
 
-@async_with_transaction
+
 async def product_get_by_id(session: AsyncSession, product_id: int) -> Product:
     """
     Получение продукта по ID.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param product_id: ID продукта для получения
     :return: Product с id, name, description, category и tags продукта
     """
@@ -305,11 +296,11 @@ async def product_get_by_id(session: AsyncSession, product_id: int) -> Product:
     return Product.model_validate(product)
 
 
-@async_with_transaction
+
 async def categories_get_all(session: AsyncSession) -> list[Category]:
     """
     Получение всех категорий.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :return: Список всех категорий
     """
     stmt = select(CategoryORM)
@@ -317,11 +308,11 @@ async def categories_get_all(session: AsyncSession) -> list[Category]:
     return [Category.model_validate(cat) for cat in categories]
 
 
-@async_with_transaction
+
 async def tags_get_all(session: AsyncSession) -> list[Tag]:
     """
     Получение всех тегов.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :return: Список всех тегов
     """
     stmt = select(TagORM)
@@ -329,11 +320,11 @@ async def tags_get_all(session: AsyncSession) -> list[Tag]:
     return [Tag.model_validate(tag) for tag in tags]
 
 
-@async_with_transaction
+
 async def products_get_all(session: AsyncSession) -> list[Product]:
     """
     Получение всех продуктов и связанных данных.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :return: Список всех продуктов с категориями и тегами
     """
     stmt = select(ProductORM).options(
@@ -343,13 +334,13 @@ async def products_get_all(session: AsyncSession) -> list[Product]:
     return [Product.model_validate(prod) for prod in products]
 
 
-@async_with_transaction
+
 async def products_get_like_name(
     session: AsyncSession, name_substring: str
 ) -> list[Product]:
     """
     Расширенный поиск продуктов по названию, категории или тегам.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param name_substring: Подстрока для поиска вхождения в имя продукта или в имя категории/тега
     """
     stmt = (
@@ -374,11 +365,11 @@ async def products_get_like_name(
 ######################## Update операции ########################
 
 
-@async_with_transaction
+
 async def category_update(session: AsyncSession, category_data: Category) -> Category:
     """
     Обновление категории по ID.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param category_id: ID категории для обновления
     :param category_data: Данные для обновления категории
     :return: Обновлённая категория
@@ -393,11 +384,11 @@ async def category_update(session: AsyncSession, category_data: Category) -> Cat
     return Category.model_validate(category)
 
 
-@async_with_transaction
+
 async def tag_update(session: AsyncSession, tag_data: Tag) -> Tag:
     """
     Обновление тега по ID.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param tag_id: ID тега для обновления
     :param tag_data: Данные для обновления тега
     :return: Обновлённый тег
@@ -412,11 +403,11 @@ async def tag_update(session: AsyncSession, tag_data: Tag) -> Tag:
     return Tag.model_validate(tag)
 
 
-@async_with_transaction
+
 async def product_update(session: AsyncSession, product_data: ProductUpdate) -> Product:
     """
     Обновление продукта по ID включая связи.
-    :param session: Сессия SQLAlchemy (передаётся декоратором).
+    :param session: Асинхронная сессия SQLAlchemy
     :param product_data: Данные для обновления продукта
     :return: Обновлённый продукт
     """
