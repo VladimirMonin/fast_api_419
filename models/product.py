@@ -70,8 +70,8 @@ class Product(Base):
     # Text для длинных описаний, может быть NULL
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # URL может быть пустым
-    image_url: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # URL может быть пустым (увеличен до 500 для длинных путей)
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Индексы на цены для фильтрации
     price_shmeckles: Mapped[float] = mapped_column(Float, nullable=False, index=True)

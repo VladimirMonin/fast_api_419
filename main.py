@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from routes import products, categories, tags
 from core.logging_config import setup_logging
 
@@ -42,8 +43,16 @@ app.add_middleware(
     allow_headers=["*"],  # Разрешить все заголовки
 )
 
-app.include_router(categories.router, prefix="/categories", tags=["Категории"])
+app.include_router(
+    categories.router, prefix="/categories", tags=["Категории"]
+)  # "/{category_id}",
 app.include_router(tags.router, prefix="/tags", tags=["Теги"])
 app.include_router(products.router, prefix="/products", tags=["Товары"])
+
+# Раздача статических файлов (загруженные изображения)
+# "/uploads" - маршрут для доступа к загруженным файлам
+# directory="uploads" - папка на сервере, где хранятся файлы
+# name - имя монтируемого приложения - оно может использоваться для обратного вызова URL
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 logger.info("✅ Все роутеры успешно подключены")

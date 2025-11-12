@@ -3,7 +3,7 @@ import logging
 from typing import List, Optional
 
 from schemas.product import Product, ProductCreate, ProductUpdate
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, UploadFile
 from utils.telegram_bot import send_telegram_message
 from core.database import (
     get_db_session,
@@ -184,3 +184,120 @@ async def delete_product(
     except Exception as e:
         logger.error(f"❌ Ошибка при удалении товара ID={product_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка при удалении товара: {e}")
+
+
+@router.post(
+    "/{product_id}/upload-image",
+    summary="Загрузить изображение для товара",
+    tags=["Products"],
+)
+async def upload_product_image(
+    product_id: int,
+    file: UploadFile,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Загружает изображение для товара.
+    Заменяет старое изображение, если оно существует.
+
+    - **product_id**: ID товара
+    - **file**: Файл изображения (JPG, PNG, GIF, WEBP, макс 5MB)
+    """
+    from core.storage import save_product_image, delete_product_image
+
+    logger.info(f"📥 Запрос на загрузку изображения для товара ID={product_id}")
+
+    # Проверяем существование товара
+    try:
+        product = await product_get_by_id(session, product_id)
+    except Exception as e:
+        logger.error(f"❌ Товар ID={product_id} не найден: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+
+    # Удаляем старое изображение, если оно есть
+    if product.image_url:
+        logger.info(f"🗑️ Удаление старого изображения: {product.image_url}")
+        delete_product_image(product.image_url)
+
+    # Сохраняем новое изображение
+    try:
+        image_url = await save_product_image(file)
+        logger.info(f"✅ Изображение сохранено: {image_url}")
+    except HTTPException:
+        logger.info("❌ Ошибка при сохранении изображения, прерывание операции")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Ошибка при сохранении изображения: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при сохранении: {e}")
+
+    # Обновляем URL в базе данных
+    from sqlalchemy import update
+    from models.product import Product as ProductModel
+
+    try:
+        await session.execute(
+            update(ProductModel)
+            .where(ProductModel.id == product_id)
+            .values(image_url=image_url)
+        )
+        await session.commit()
+        logger.info(f"✅ URL изображения обновлён в БД для товара ID={product_id}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обновлении БД: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка БД: {e}")
+
+    return {
+        "product_id": product_id,
+        "image_url": image_url,
+        "message": "✅ Изображение успешно загружено",
+    }
+
+
+@router.delete(
+    "/{product_id}/image",
+    summary="Удалить изображение товара",
+    tags=["Products"],
+)
+async def delete_product_image_endpoint(
+    product_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Удаляет изображение товара из файловой системы и БД.
+    """
+    from core.storage import delete_product_image
+    from sqlalchemy import update
+    from models.product import Product as ProductModel
+
+    logger.info(f"📥 Запрос на удаление изображения товара ID={product_id}")
+
+    # Проверяем существование товара
+    try:
+        product = await product_get_by_id(session, product_id)
+    except Exception as e:
+        logger.error(f"❌ Товар ID={product_id} не найден: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if not product.image_url:
+        logger.warning(f"⚠️ У товара ID={product_id} нет изображения")
+        raise HTTPException(status_code=404, detail="У товара нет изображения")
+
+    # Удаляем файл
+    deleted = delete_product_image(product.image_url)
+    if not deleted:
+        logger.warning(f"⚠️ Файл не найден: {product.image_url}")
+
+    # Обновляем БД
+    try:
+        await session.execute(
+            update(ProductModel)
+            .where(ProductModel.id == product_id)
+            .values(image_url=None)
+        )
+        await session.commit()
+        logger.info(f"✅ Изображение удалено для товара ID={product_id}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при обновлении БД: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка БД: {e}")
+
+    return {"message": "✅ Изображение удалено", "product_id": product_id}
