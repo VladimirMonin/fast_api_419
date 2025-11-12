@@ -1,4 +1,5 @@
 # routes/products.py
+import logging
 from typing import List, Optional
 
 from schemas.product import Product, ProductCreate, ProductUpdate
@@ -13,12 +14,14 @@ from core.database import (
     product_update,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
 # --- Маршруты API для работы с товарами ---
 
 router = APIRouter()
 
 
-# 1. Получение данных о товаре (детальный просмотр)
 @router.get(
     "/{product_id}",
     response_model=Product,
@@ -29,18 +32,17 @@ async def get_product(product_id: int, session: AsyncSession = Depends(get_db_se
     """
     Возвращает данные о товаре по его ID.
     """
-    # Делаем запрос к бд через product_get_by_id
+    logger.info(f"📥 Запрос на получение товара ID={product_id}")
+
     try:
         product = await product_get_by_id(session, product_id)
+        logger.info(f"✅ Товар ID={product_id} успешно получен")
         return product
     except Exception as e:
+        logger.error(f"❌ Ошибка при получении товара ID={product_id}: {e}")
         raise HTTPException(status_code=404, detail=str(e))
 
 
-# 2. Получение списка всех товаров.
-# Параметры запроса - search (поиск по названию и описанию)
-# Еще один параметр - sort (сортировка по цене - которая принемает валюту и направление))
-# Чекбокс - только с фотографиями
 @router.get(
     "/",
     response_model=List[Product],
@@ -58,14 +60,21 @@ async def list_products(
     - **sort**: Сортировка по цене. Формат: `currency_direction` (например, `credits_asc`, `shmeckles_desc`).
     - **has_image**: Если True, возвращаются только товары с изображениями.
     """
+    logger.info(
+        f"📥 Запрос списка товаров (search={search}, sort={sort}, has_image={has_image})"
+    )
+
     try:
         products = await products_get_with_filters(
             session, search=search, sort=sort, has_image=has_image
         )
+        logger.info(f"✅ Список товаров получен, найдено: {len(products)}")
         return products
     except ValueError as e:
+        logger.error(f"❌ Ошибка валидации при получении списка товаров: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.error(f"❌ Ошибка при получении списка товаров: {e}")
         raise HTTPException(
             status_code=500, detail=f"Ошибка при получении списка товаров: {e}"
         )
@@ -86,10 +95,13 @@ async def create_product(
     """
     Создает новый товар.
     """
-    # Пытаемся создать новый товар через product_create
+    logger.info(f"📥 Запрос на создание товара: {product.name}")
+
     try:
         new_product = await product_create(session, product)
+        logger.info(f"✅ Товар создан: ID={new_product.id}, Name={new_product.name}")
     except Exception as e:
+        logger.error(f"❌ Ошибка при создании товара: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
     # Формируем сообщение для отправки в Telegram
@@ -108,12 +120,14 @@ http://127.0.0.1:8000/products/{new_product.id}
 """
 
     # Фоновая задача - отправка уведомления в Telegram
+    logger.info(
+        f"📤 Добавлена фоновая задача отправки уведомления в Telegram для товара ID={new_product.id}"
+    )
     background_tasks.add_task(send_telegram_message, telegram_message)
 
     return new_product
 
 
-# PUT
 @router.put(
     "/{product_id}",
     response_model=Product,
@@ -127,22 +141,26 @@ async def update_product(
     """
     Обновляет данные о товаре по его ID.
     """
+    logger.info(f"📥 Запрос на обновление товара ID={product_id}")
+
     try:
         # Создаем объект ProductUpdate с ID из URL и данными из тела запроса
         product_update_data = ProductUpdate(
             id=product_id, **updated_product.model_dump()
         )
         product = await product_update(session, product_update_data)
+        logger.info(f"✅ Товар ID={product_id} успешно обновлён")
         return product
     except ValueError as e:
+        logger.error(f"❌ Товар ID={product_id} не найден: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"❌ Ошибка при обновлении товара ID={product_id}: {e}")
         raise HTTPException(
             status_code=500, detail=f"Ошибка при обновлении товара: {e}"
         )
 
 
-# DELETE
 @router.delete(
     "/{product_id}",
     response_model=int,
@@ -154,10 +172,15 @@ async def delete_product(
     """
     Удаляет товар по его ID.
     """
+    logger.info(f"📥 Запрос на удаление товара ID={product_id}")
+
     try:
         await product_delete(session, product_id)
+        logger.info(f"✅ Товар ID={product_id} успешно удалён")
         return product_id
     except ValueError as e:
+        logger.error(f"❌ Товар ID={product_id} не найден: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"❌ Ошибка при удалении товара ID={product_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка при удалении товара: {e}")

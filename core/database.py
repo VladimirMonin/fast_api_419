@@ -1,4 +1,5 @@
 # core/database.py
+import logging
 from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -18,13 +19,17 @@ from schemas.product import (
     Product,
 )
 
+logger = logging.getLogger(__name__)
+
 # URL для подключения к асинхронной SQLite
 DATABASE_URL = settings.DATABASE_URL
 
+logger.info(f"📊 Инициализация подключения к БД: {DATABASE_URL}")
 
 # Cоздание асинхронного движка базы данных
 #  echo=True — включает логирование SQL-запросов в консоль
 engine = create_async_engine(DATABASE_URL, echo=True)
+logger.info("✅ Асинхронный движок базы данных создан")
 
 # Создание фабрики асинхронных сессий
 AsyncSessionLocal = async_sessionmaker(
@@ -35,6 +40,8 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
     class_=AsyncSession,  # Используем асинхронную сессию
 )
+
+logger.info("✅ Фабрика асинхронных сессий создана")
 
 # AsyncSession - тип для аннотаций
 
@@ -60,10 +67,13 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     async with AsyncSessionLocal() as session:
         try:
+            logger.debug("🔌 Открыта новая сессия БД")
             yield session
             await session.commit()
-        except Exception:
+            logger.debug("✅ Сессия БД закоммичена и закрыта")
+        except Exception as e:
             await session.rollback()
+            logger.error(f"❌ Ошибка в сессии БД, выполнен rollback: {e}")
             raise
 
 
@@ -78,11 +88,15 @@ async def tag_create(session: AsyncSession, tag_data: TagCreate) -> Tag:
     :param tag_data: Данные для создания тега
     :return: Tag с id и name тега
     """
+    logger.info(f"📝 Попытка создания тега: {tag_data.name}")
+
     # Проверка на уникальность имени
     existing = await session.scalar(select(TagORM).where(TagORM.name == tag_data.name))
 
     if existing:
-        # logger.warning(f"⚠️ Тег '{tag_data.name}' уже существует")
+        logger.warning(
+            f"⚠️ Тег '{tag_data.name}' уже существует, возвращаем существующий"
+        )
         return Tag.model_validate(existing)
 
     # Создаём новый тег
@@ -93,7 +107,7 @@ async def tag_create(session: AsyncSession, tag_data: TagCreate) -> Tag:
     await session.refresh(new_tag)
 
     result = Tag.model_validate(new_tag)
-    # logger.info(f"✅ Тег создан: ID={result.id}, Name={result.name}")
+    logger.info(f"✅ Тег создан: ID={result.id}, Name={result.name}")
     return result
 
 
@@ -107,13 +121,17 @@ async def category_create(
     :param category_data: Данные для создания категории
     :return: Category с id и name категории
     """
+    logger.info(f"📝 Попытка создания категории: {category_data.name}")
+
     # Проверка на уникальность имени
     existing = await session.scalar(
         select(CategoryORM).where(CategoryORM.name == category_data.name)
     )
 
     if existing:
-        # logger.warning(f"⚠️ Категория '{category_data.name}' уже существует")
+        logger.warning(
+            f"⚠️ Категория '{category_data.name}' уже существует, возвращаем существующую"
+        )
         return Category.model_validate(existing)
 
     # Создаём новую категорию
@@ -124,7 +142,7 @@ async def category_create(
     await session.refresh(new_category)
 
     result = Category.model_validate(new_category)
-    # logger.info(f"✅ Категория создана: ID={result.id}, Name={result.name}")
+    logger.info(f"✅ Категория создана: ID={result.id}, Name={result.name}")
     return result
 
 
@@ -136,6 +154,7 @@ async def product_create(session: AsyncSession, product_data: ProductCreate) -> 
     :param product_data: Данные для создания продукта
     :return: Product с id, name, description, category и tags продукта
     """
+    logger.info(f"📝 Попытка создания продукта: {product_data.name}")
 
     # Базовый продукт без связей
     product_dict = product_data.model_dump(exclude={"category_id", "tag_ids"})
@@ -146,8 +165,11 @@ async def product_create(session: AsyncSession, product_data: ProductCreate) -> 
         category = await session.get(CategoryORM, product_data.category_id)
         if category:
             new_product.category = category
-
+            logger.debug(
+                f"🔗 Продукт связан с категорией ID={product_data.category_id}"
+            )
         else:
+            logger.error(f"❌ Категория с ID={product_data.category_id} не найдена")
             raise ValueError(f"Категория с ID={product_data.category_id} не найдена")
 
     # Связываем теги, если указаны
@@ -163,10 +185,12 @@ async def product_create(session: AsyncSession, product_data: ProductCreate) -> 
         missing_ids = set(product_data.tag_ids) - found_ids
 
         if missing_ids:
+            logger.error(f"❌ Теги с ID={missing_ids} не найдены")
             raise ValueError(f"Теги с ID={missing_ids} не найдены")
 
         # Связываем теги с продуктом
         new_product.tags = list(tags_list)
+        logger.debug(f"🔗 Продукт связан с тегами: {[tag.name for tag in tags_list]}")
 
     # Сохраняем продукт в базе
     session.add(new_product)
@@ -184,6 +208,7 @@ async def product_create(session: AsyncSession, product_data: ProductCreate) -> 
 
     # Валидируем и пакуем в Pydantic модель
     result = Product.model_validate(refreshed_product_with_relations)
+    logger.info(f"✅ Продукт создан: ID={result.id}, Name={result.name}")
     return result
 
 
@@ -197,12 +222,15 @@ async def category_delete(session: AsyncSession, category_id: int) -> None:
     :param session: Асинхронная сессия SQLAlchemy
     :param category_id: ID категории для удаления
     """
+    logger.info(f"🗑️ Попытка удаления категории ID={category_id}")
+
     category = await session.get(CategoryORM, category_id)
     if not category:
+        logger.error(f"❌ Категория с ID={category_id} не найдена")
         raise ValueError(f"Категория с ID={category_id} не найдена")
 
     await session.delete(category)
-    # logger.info(f"✅ Категория с ID={category_id} удалёна")
+    logger.info(f"✅ Категория с ID={category_id} удалена")
 
 
 async def tag_delete(session: AsyncSession, tag_id: int) -> None:
@@ -212,12 +240,15 @@ async def tag_delete(session: AsyncSession, tag_id: int) -> None:
     :param session: Асинхронная сессия SQLAlchemy
     :param tag_id: ID тега для удаления
     """
+    logger.info(f"🗑️ Попытка удаления тега ID={tag_id}")
+
     tag = await session.get(TagORM, tag_id)
     if not tag:
+        logger.error(f"❌ Тег с ID={tag_id} не найден")
         raise ValueError(f"Тег с ID={tag_id} не найден")
 
     await session.delete(tag)
-    # logger.info(f"✅ Тег с ID={tag_id} удалён")
+    logger.info(f"✅ Тег с ID={tag_id} удалён")
 
 
 async def product_delete(session: AsyncSession, product_id: int) -> None:
@@ -227,12 +258,15 @@ async def product_delete(session: AsyncSession, product_id: int) -> None:
     :param session: Асинхронная сессия SQLAlchemy
     :param product_id: ID продукта для удаления
     """
+    logger.info(f"🗑️ Попытка удаления продукта ID={product_id}")
+
     product = await session.get(ProductORM, product_id)
     if not product:
+        logger.error(f"❌ Продукт с ID={product_id} не найден")
         raise ValueError(f"Продукт с ID={product_id} не найден")
 
     await session.delete(product)
-    # logger.info(f"✅ Продукт с ID={product_id} удалён")
+    logger.info(f"✅ Продукт с ID={product_id} удалён")
 
 
 ######################## Read операции ########################
