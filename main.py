@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from routes import products, categories, tags
 from core.logging_config import setup_logging
 
@@ -25,6 +26,20 @@ app = FastAPI(
     description="Пример простого API для управления пользователями",
     version="2.0.0",
     lifespan=lifespan,
+)
+
+# --- Настройка CORS для React фронтенда ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server (React)
+        "http://localhost:3000",  # Create React App dev server
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,  # Разрешить отправку куки и авторизационных заголовков
+    allow_methods=["*"],  # Разрешить все HTTP методы (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],  # Разрешить все заголовки
 )
 
 app.include_router(categories.router, prefix="/categories", tags=["Категории"])

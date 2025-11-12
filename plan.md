@@ -166,10 +166,10 @@
 
 **Действия:**
 
-- [ ] Добавить `alembic` в `requirements.txt`
-- [ ] Выполнить `alembic init alembic` для создания структуры
-- [ ] Настроить `alembic.ini` и `alembic/env.py` для асинхронной БД
-- [ ] Создать стартовую миграцию
+- [x] Добавить `alembic` в `requirements.txt`
+- [x] Выполнить `alembic init alembic` для создания структуры
+- [x] Настроить `alembic.ini` и `alembic/env.py` для асинхронной БД
+- [x] Создать стартовую миграцию
 
 **Коммит:** `Задача: Настроен Alembic для миграций`
 
@@ -188,10 +188,10 @@
 
 **Действия:**
 
-- [ ] Создать файл `core/logging_config.py` с конфигурацией логгера
-- [ ] Добавить функцию `setup_logging()` для применения конфигурации
-- [ ] Вызвать `setup_logging()` в `main.py` при старте приложения
-- [ ] Раскомментировать и использовать логгер в `core/database.py`
+- [x] Создать файл `core/logging_config.py` с конфигурацией логгера
+- [x] Добавить функцию `setup_logging()` для применения конфигурации
+- [x] Вызвать `setup_logging()` в `main.py` при старте приложения
+- [x] Раскомментировать и использовать логгер в `core/database.py`
 
 **Коммит:** `Задача: Добавлена конфигурация логирования`
 
@@ -208,11 +208,12 @@
 - `main.py`
 
 **Действия:**
+РЕШИЛИ НЕ ДЕЛАТЬ ЭТОГО ДЛЯ ПРОСТОГО API. SONNET 4.5 СКАЗАЛ ЧТО ТЕКУЩАЯ РЕАЛИЗАЦИЯ КАНОНИЧНА И ОПТИМАЛЬНА. Добавили логгер в lifespan.
 
 - [ ] Импортировать `engine` из `core.database`
 - [ ] Добавить обработчик `lifespan` (через `@asynccontextmanager`), чтобы управлять `engine.dispose()` при выключении
-- [ ] Импортировать `CORSMiddleware` из `fastapi.middleware.cors`
-- [ ] Добавить `app.add_middleware(CORSMiddleware, ...)` с указанием адреса React-приложения (например, `http://localhost:5173`) в `allow_origins`
+- [x] Импортировать `CORSMiddleware` из `fastapi.middleware.cors`
+- [x] Добавить `app.add_middleware(CORSMiddleware, ...)` с указанием адреса React-приложения (например, `http://localhost:5173`) в `allow_origins`
 
 **Коммит:** `Задача: Настроен жизненный цикл (lifespan) и CORS`
 
