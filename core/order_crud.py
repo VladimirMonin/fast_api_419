@@ -97,8 +97,10 @@ async def create_order(
     # Шаг 6: Коммитим всю транзакцию
     await session.commit()
 
-    # Перезагружаем заказ с позициями для возврата
-    await session.refresh(order)
+    # Перезагружаем заказ с позициями для возврата (eager loading)
+    stmt = select(Order).where(Order.id == order.id).options(selectinload(Order.items))
+    result = await session.execute(stmt)
+    order = result.scalar_one()
 
     logger.info(f"🎉 Заказ #{order.id} успешно создан и корзина очищена")
 
