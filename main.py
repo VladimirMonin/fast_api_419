@@ -10,7 +10,7 @@ from auth.backend import auth_backend
 from auth.manager import get_user_manager
 from core.logging_config import setup_logging
 from models.user import User
-from routes import categories, products, tags, cart
+from routes import categories, products, tags, cart, orders
 from schemas.user import UserCreate, UserRead, UserUpdate
 
 # Настройка логирования при импорте модуля
@@ -79,6 +79,7 @@ app.include_router(
 app.include_router(tags.router, prefix="/tags", tags=["Теги"])
 app.include_router(products.router, prefix="/products", tags=["Товары"])
 app.include_router(cart.router, prefix="/cart", tags=["Корзина"])
+app.include_router(orders.router, prefix="/orders", tags=["Заказы"])
 
 # Раздача статических файлов (загруженные изображения)
 # "/uploads" - маршрут для доступа к загруженным файлам
