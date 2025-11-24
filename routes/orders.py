@@ -3,10 +3,11 @@
 API эндпоинты для работы с заказами.
 Все операции требуют авторизации.
 """
+
 import logging
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi_users import FastAPIUsers
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,7 @@ from core.database import get_db_session
 from core.order_crud import create_order, get_order_by_id, get_user_orders
 from models.user import User
 from schemas.commerce import OrderCreate, OrderRead
+from utils.telegram_bot import send_order_notification
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ get_current_active_user = fastapi_users_instance.current_user(active=True)
 )
 async def create_new_order(
     order_data: OrderCreate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
     user: User = Depends(get_current_active_user),
 ):
@@ -41,12 +44,25 @@ async def create_new_order(
     Создать заказ из корзины.
     Товары берутся из текущей корзины, цены фиксируются (frozen_price).
     После создания заказа корзина автоматически очищается.
+    Отправляет уведомление в Telegram через BackgroundTasks.
     """
     logger.info(f"📦 Создание заказа для пользователя {user.id}")
 
     try:
         order = await create_order(session, user.id, order_data)
-        logger.info(f"✅ Заказ #{order.id} успешно создан на сумму {order.total_amount} шмеклей")
+        logger.info(
+            f"✅ Заказ #{order.id} успешно создан на сумму {order.total_amount} шмеклей"
+        )
+
+        # Отправляем уведомление в Telegram в фоновом режиме
+        background_tasks.add_task(
+            send_order_notification,
+            order_id=order.id,
+            total_amount=order.total_amount,
+            user_email=user.email,
+            delivery_address=order.delivery_address,
+        )
+
         return order
     except ValueError as e:
         logger.error(f"❌ Ошибка создания заказа: {e}")

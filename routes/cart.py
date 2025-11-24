@@ -3,6 +3,7 @@
 API эндпоинты для управления корзиной.
 Все операции требуют авторизации (Depends(get_current_active_user)).
 """
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -28,9 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # === Dependency для получения текущего авторизованного пользователя ===
-fastapi_users_instance = FastAPIUsers[User, int](
-    get_user_manager, [auth_backend]
-)
+fastapi_users_instance = FastAPIUsers[User, int](get_user_manager, [auth_backend])
 
 get_current_active_user = fastapi_users_instance.current_user(active=True)
 
@@ -60,7 +59,9 @@ async def get_cart(
         cart = Cart(id=0, user_id=user.id, items=[])
         logger.info(f"📭 Корзина пользователя {user.id} пуста")
 
-    logger.info(f"✅ Корзина пользователя {user.id} получена. Товаров: {len(cart.items)}")
+    logger.info(
+        f"✅ Корзина пользователя {user.id} получена. Товаров: {len(cart.items)}"
+    )
     return cart
 
 
@@ -138,9 +139,7 @@ async def update_item_quantity(
     """
     Обновить количество товара в корзине.
     """
-    logger.info(
-        f"🔄 Обновление количества позиции {item_id} до {update_data.quantity}"
-    )
+    logger.info(f"🔄 Обновление количества позиции {item_id} до {update_data.quantity}")
 
     try:
         cart_item = await update_cart_item_quantity(

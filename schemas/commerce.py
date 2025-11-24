@@ -14,9 +14,7 @@ class CartItemCreate(BaseModel):
     product_id: int = Field(
         ..., description="ID товара для добавления в корзину", example=1, gt=0
     )
-    quantity: int = Field(
-        default=1, description="Количество товара", example=2, ge=1
-    )
+    quantity: int = Field(default=1, description="Количество товара", example=2, ge=1)
 
 
 class CartItemUpdate(BaseModel):
@@ -53,7 +51,9 @@ class CartRead(BaseModel):
 
     id: int = Field(..., description="ID корзины")
     user_id: int = Field(..., description="ID пользователя")
-    items: List[CartItemRead] = Field(default=[], description="Список товаров в корзине")
+    items: List[CartItemRead] = Field(
+        default=[], description="Список товаров в корзине"
+    )
 
     @computed_field
     @property

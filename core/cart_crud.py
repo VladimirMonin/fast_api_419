@@ -2,6 +2,7 @@
 """
 CRUD операции для корзины с умной логикой добавления товаров (UPSERT).
 """
+
 import logging
 from typing import List
 
@@ -40,7 +41,9 @@ async def get_or_create_cart(session: AsyncSession, user_id: int) -> Cart:
         await session.refresh(cart)
         logger.info(f"🛒 Создана новая корзина для пользователя {user_id}")
     else:
-        logger.info(f"🛒 Найдена существующая корзина {cart.id} для пользователя {user_id}")
+        logger.info(
+            f"🛒 Найдена существующая корзина {cart.id} для пользователя {user_id}"
+        )
 
     return cart
 
@@ -77,9 +80,8 @@ async def add_to_cart(
     cart = await get_or_create_cart(session, user_id)
 
     # Проверяем, есть ли уже этот товар в корзине
-    stmt = (
-        select(CartItem)
-        .where(CartItem.cart_id == cart.id, CartItem.product_id == product_id)
+    stmt = select(CartItem).where(
+        CartItem.cart_id == cart.id, CartItem.product_id == product_id
     )
     result = await session.execute(stmt)
     cart_item = result.scalar_one_or_none()
@@ -94,7 +96,9 @@ async def add_to_cart(
         # Товара нет - создаем новую запись (UPSERT - INSERT)
         cart_item = CartItem(cart_id=cart.id, product_id=product_id, quantity=quantity)
         session.add(cart_item)
-        logger.info(f"✨ Добавлен новый товар {product_id} в корзину (количество: {quantity})")
+        logger.info(
+            f"✨ Добавлен новый товар {product_id} в корзину (количество: {quantity})"
+        )
 
     await session.commit()
     await session.refresh(cart_item)
@@ -121,12 +125,17 @@ async def merge_cart(
         ]
         await merge_cart(session, user_id=42, items=items)
     """
-    logger.info(f"🔄 Начало синхронизации корзины для пользователя {user_id}. Товаров: {len(items)}")
+    logger.info(
+        f"🔄 Начало синхронизации корзины для пользователя {user_id}. Товаров: {len(items)}"
+    )
 
     for item in items:
         try:
             await add_to_cart(
-                session, user_id=user_id, product_id=item.product_id, quantity=item.quantity
+                session,
+                user_id=user_id,
+                product_id=item.product_id,
+                quantity=item.quantity,
             )
         except ValueError as e:
             # Если товар не найден, пропускаем его и продолжаем
@@ -150,9 +159,7 @@ async def get_cart_with_items(session: AsyncSession, user_id: int) -> Cart | Non
     stmt = (
         select(Cart)
         .where(Cart.user_id == user_id)
-        .options(
-            selectinload(Cart.items).selectinload(CartItem.product)
-        )
+        .options(selectinload(Cart.items).selectinload(CartItem.product))
     )
     result = await session.execute(stmt)
     cart = result.scalar_one_or_none()

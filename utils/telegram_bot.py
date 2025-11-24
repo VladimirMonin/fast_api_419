@@ -25,3 +25,27 @@ async def send_telegram_message(message: str, parse_mode: str = "Markdown"):
         raise
     else:
         logging.debug(f"Сообщение успешно отправлено: {message}")
+
+
+async def send_order_notification(
+    order_id: int, total_amount: float, user_email: str, delivery_address: str
+):
+    """
+    Отправить уведомление о новом заказе в Telegram.
+
+    Args:
+        order_id: ID заказа
+        total_amount: Сумма заказа
+        user_email: Email клиента
+        delivery_address: Адрес доставки
+    """
+    message = (
+        f"💰 *Новый заказ #{order_id}!*\n\n"
+        f"📊 Сумма: *{total_amount:.2f} шмеклей*\n"
+        f"👤 Клиент: `{user_email}`\n"
+        f"📍 Адрес: {delivery_address}\n\n"
+        f"🎉 Заказ готов к обработке!"
+    )
+
+    await send_telegram_message(message, parse_mode="Markdown")
+    logging.info(f"📬 Уведомление о заказе #{order_id} отправлено в Telegram")
