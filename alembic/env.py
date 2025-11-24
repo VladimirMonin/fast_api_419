@@ -8,6 +8,7 @@ from alembic import context
 from models.base import Base
 from models.product import Product, Category, Tag, product_tag_association
 from models.user import User  # noqa: F401
+from models.commerce import Cart, CartItem, Order, OrderItem  # noqa: F401
 from core.config import settings
 
 # this is the Alembic Config object, which provides
