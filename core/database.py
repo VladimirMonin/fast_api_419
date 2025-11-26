@@ -425,6 +425,7 @@ async def products_get_with_filters(
                     TagORM.name.ilike(f"%{search}%"),
                 )
             )
+            .distinct()  # Убираем дубликаты из-за M2M связи с tags
         )
 
     # Выполняем запрос
