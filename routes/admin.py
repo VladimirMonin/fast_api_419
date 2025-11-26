@@ -108,8 +108,8 @@ async def create_product(
     price_shmeckles: float = Form(...),
     price_flurbos: float = Form(...),
     image_url: str = Form(""),
-    category_id: int | None = Form(None),
-    tag_ids: List[int] = Form([]),
+    category_id: str = Form(""),
+    tag_ids: List[int] = Form(default=[]),
 ):
     """
     Создает новый товар в базе данных.
@@ -138,7 +138,7 @@ async def create_product(
         price_shmeckles=price_shmeckles,
         price_flurbos=price_flurbos,
         image_url=image_url or None,
-        category_id=category_id,
+        category_id=int(category_id) if category_id else None,
         tag_ids=tag_ids,
     )
 
@@ -207,8 +207,8 @@ async def update_product(
     price_shmeckles: float = Form(...),
     price_flurbos: float = Form(...),
     image_url: str = Form(""),
-    category_id: int | None = Form(None),
-    tag_ids: List[int] = Form([]),
+    category_id: str = Form(""),
+    tag_ids: List[int] = Form(default=[]),
 ):
     """
     Обновляет данные товара (HTMX).
@@ -234,9 +234,15 @@ async def update_product(
     try:
         # Получаем товар из БД (ORM модель)
         from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
         from models.product import Product as ProductORM, Tag as TagORM
 
-        stmt = select(ProductORM).where(ProductORM.id == product_id)
+        # Загружаем товар с тегами
+        stmt = (
+            select(ProductORM)
+            .options(selectinload(ProductORM.tags))
+            .where(ProductORM.id == product_id)
+        )
         result = await session.execute(stmt)
         product_orm = result.scalar_one_or_none()
 
@@ -245,11 +251,11 @@ async def update_product(
 
         # Обновляем поля
         product_orm.name = name
-        product_orm.description = description or None
+        product_orm.description = description.strip() if description else None
         product_orm.price_shmeckles = price_shmeckles
         product_orm.price_flurbos = price_flurbos
-        product_orm.image_url = image_url or None
-        product_orm.category_id = category_id
+        product_orm.image_url = image_url.strip() if image_url else None
+        product_orm.category_id = int(category_id) if category_id else None
 
         # Обновляем теги
         if tag_ids:

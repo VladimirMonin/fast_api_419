@@ -33,7 +33,7 @@
                         <!-- Контейнер для сообщений об ошибках -->
                         <div id="login-messages"></div>
                         
-                        <form hx-post="/auth/login" 
+                        <form hx-post="/auth/login-form" 
                               hx-target="#login-messages"
                               hx-swap="innerHTML">
                             
@@ -74,7 +74,7 @@
                         <!-- Контейнер для сообщений об ошибках -->
                         <div id="register-messages"></div>
                         
-                        <form hx-post="/auth/register" 
+                        <form hx-post="/auth/register-form" 
                               hx-target="#register-messages"
                               hx-swap="innerHTML">
                             

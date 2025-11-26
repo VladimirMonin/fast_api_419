@@ -59,11 +59,12 @@
                 <!-- URL картинки -->
                 <div class="mb-2">
                     <label for="image_url-{{ product.id }}" class="form-label small mb-1">URL картинки</label>
-                    <input type="url" 
+                    <input type="text" 
                            class="form-control form-control-sm" 
                            id="image_url-{{ product.id }}" 
                            name="image_url"
-                           value="{{ product.image_url or '' }}">
+                           value="{{ product.image_url or '' }}"
+                           placeholder="https://example.com/image.jpg">
                 </div>
 
                 <!-- Категория -->

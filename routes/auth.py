@@ -5,9 +5,9 @@
 через HTML интерфейс с использованием HTMX.
 
 Основные роуты:
-    - GET /auth/login - Страница входа/регистрации
-    - POST /auth/login - Обработка формы входа (устанавливает cookie)
-    - POST /auth/register - Обработка формы регистрации
+    - GET /auth/login-page - Страница входа/регистрации
+    - POST /auth/login-form - Обработка формы входа (устанавливает cookie)
+    - POST /auth/register-form - Обработка формы регистрации
     - GET /auth/logout - Выход из системы (удаляет cookie)
 """
 
@@ -33,7 +33,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
-@router.get("/auth/login", response_class=HTMLResponse)
+@router.get("/login-page", response_class=HTMLResponse)
 async def login_page(
     request: Request,
     user: User | None = Depends(get_current_user_from_cookie),
@@ -60,7 +60,7 @@ async def login_page(
     )
 
 
-@router.post("/auth/login")
+@router.post("/login-form")
 async def login(
     response: Response,
     username: str = Form(...),  # email пользователя (OAuth2 требует username)
@@ -94,9 +94,12 @@ async def login(
     user = await user_manager.get_by_email(username)
 
     # Проверяем существование пользователя и правильность пароля
-    if user is None or not user_manager.password_helper.verify_and_update(
-        password, user.hashed_password
-    )[0]:
+    if (
+        user is None
+        or not user_manager.password_helper.verify_and_update(
+            password, user.hashed_password
+        )[0]
+    ):
         # Возвращаем ошибку для HTMX
         return HTMLResponse(
             content="""
@@ -132,7 +135,7 @@ async def login(
     return response
 
 
-@router.post("/auth/register")
+@router.post("/register-form")
 async def register(
     request: Request,
     email: str = Form(...),
@@ -213,7 +216,7 @@ async def register(
         )
 
 
-@router.get("/auth/logout")
+@router.get("/logout")
 async def logout(response: Response):
     """
     Выход из системы - удаляет cookie с токеном.
@@ -224,7 +227,7 @@ async def logout(response: Response):
     Returns:
         RedirectResponse: Редирект на страницу входа
     """
-    response = RedirectResponse("/auth/login", status_code=status.HTTP_302_FOUND)
+    response = RedirectResponse("/auth/login-page", status_code=status.HTTP_302_FOUND)
 
     # Удаляем cookie с токеном
     response.delete_cookie(key="access_token")

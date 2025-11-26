@@ -90,7 +90,7 @@ app.include_router(cart.router, prefix="/cart", tags=["Корзина"])
 app.include_router(orders.router, prefix="/orders", tags=["Заказы"])
 
 # HTML роуты аутентификации (формы входа/регистрации)
-app.include_router(auth.router, tags=["Auth HTML"])
+app.include_router(auth.router, prefix="/auth", tags=["Auth HTML"])
 
 # HTML роуты админ-панели
 app.include_router(admin.router, tags=["Admin HTML"])

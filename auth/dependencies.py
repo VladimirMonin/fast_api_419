@@ -69,10 +69,12 @@ async def get_current_user_from_cookie(
 
     try:
         # Декодируем JWT токен
+        # audience должен соответствовать тому, что устанавливает fastapi-users
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=["HS256"],
+            audience=["fastapi-users:auth"],
         )
 
         # Извлекаем user_id из payload
@@ -82,9 +84,7 @@ async def get_current_user_from_cookie(
             return None
 
         # Находим пользователя в БД
-        result = await session.execute(
-            select(User).where(User.id == int(user_id))
-        )
+        result = await session.execute(select(User).where(User.id == int(user_id)))
         user = result.scalar_one_or_none()
 
         return user
