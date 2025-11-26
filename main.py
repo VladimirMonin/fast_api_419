@@ -1,21 +1,29 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from fastapi_users import FastAPIUsers
 
 from auth.backend import auth_backend
 from auth.manager import get_user_manager
 from core.logging_config import setup_logging
 from models.user import User
-from routes import categories, products, tags, cart, orders
+from routes import categories, products, tags, cart, orders, pages
 from schemas.user import UserCreate, UserRead, UserUpdate
 
 # Настройка логирования при импорте модуля
 setup_logging(log_level="INFO")
 logger = logging.getLogger(__name__)
+
+# Определение базовой директории проекта
+BASE_DIR = Path(__file__).resolve().parent
+
+# Инициализация Jinja2 шаблонов
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
 @asynccontextmanager
@@ -81,10 +89,17 @@ app.include_router(products.router, prefix="/products", tags=["Товары"])
 app.include_router(cart.router, prefix="/cart", tags=["Корзина"])
 app.include_router(orders.router, prefix="/orders", tags=["Заказы"])
 
+# HTML страницы (должны быть подключены ПОСЛЕДНИМИ, чтобы не перехватывать API)
+app.include_router(pages.router, tags=["Pages"])
+
 # Раздача статических файлов (загруженные изображения)
 # "/uploads" - маршрут для доступа к загруженным файлам
 # directory="uploads" - папка на сервере, где хранятся файлы
 # name - имя монтируемого приложения - оно может использоваться для обратного вызова URL
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+# Монтирование статических файлов (CSS, JS, изображения)
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
 logger.info("✅ Все роутеры успешно подключены (включая Auth)")
+logger.info("✅ Статические файлы и шаблоны настроены")

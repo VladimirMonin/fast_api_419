@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - Python419 Shop{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">🎉 {{ message }}</h1>
+        <div class="alert alert-success" role="alert">
+            <h4 class="alert-heading">Отличная работа!</h4>
+            <p>Шаблонизатор Jinja2 успешно подключен и работает.</p>
+            <hr>
+            <p class="mb-0">Bootstrap 5 загружен и стили применяются корректно.</p>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <strong>Что дальше?</strong>
+            </div>
+            <div class="card-body">
+                <p class="card-text">Сейчас мы добавим:</p>
+                <ul>
+                    <li>Получение товаров из базы данных</li>
+                    <li>Отображение каталога товаров</li>
+                    <li>Живой поиск с помощью HTMX</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
