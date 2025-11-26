@@ -18,16 +18,20 @@ router = APIRouter()
 @router.get("/", include_in_schema=False)
 async def index(
     request: Request, 
-    session: AsyncSession = Depends(get_db_session)
+    session: AsyncSession = Depends(get_db_session),
+    search: str | None = None
 ):
     """
     Главная страница - каталог товаров
     
+    Параметры:
+    - search: Поисковый запрос для фильтрации товаров по названию и описанию
+    
     include_in_schema=False скрывает этот эндпоинт из OpenAPI документации,
     так как он возвращает HTML, а не JSON
     """
-    # Получаем все товары из базы данных
-    products = await products_get_with_filters(session)
+    # Получаем товары из базы данных с учетом поискового запроса
+    products = await products_get_with_filters(session, search=search)
     
     return templates.TemplateResponse(
         "index.html",
