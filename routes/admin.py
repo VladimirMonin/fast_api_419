@@ -184,7 +184,7 @@ async def edit_product_form(
     product_tag_ids = [tag.id for tag in product.tags]
 
     return templates.TemplateResponse(
-        "admin_product.html",
+        "partials/product_edit_form.html",
         {
             "request": request,
             "user": user,
@@ -194,3 +194,89 @@ async def edit_product_form(
             "product_tag_ids": product_tag_ids,
         },
     )
+
+
+@router.post("/admin/products/{product_id}/edit", response_class=HTMLResponse)
+async def update_product(
+    request: Request,
+    product_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(require_superuser),
+    name: str = Form(...),
+    description: str = Form(""),
+    price_shmeckles: float = Form(...),
+    price_flurbos: float = Form(...),
+    image_url: str = Form(""),
+    category_id: int | None = Form(None),
+    tag_ids: List[int] = Form([]),
+):
+    """
+    Обновляет данные товара (HTMX).
+
+    Доступно только для администраторов.
+
+    Args:
+        request: FastAPI Request объект
+        product_id: ID товара для обновления
+        session: Асинхронная сессия БД
+        user: Авторизованный пользователь-администратор
+        name: Новое название товара
+        description: Новое описание товара
+        price_shmeckles: Новая цена в шмекелях
+        price_flurbos: Новая цена в флурбо
+        image_url: Новый URL картинки
+        category_id: Новый ID категории
+        tag_ids: Новый список ID тегов
+
+    Returns:
+        HTMLResponse: Обновленная карточка товара
+    """
+    try:
+        # Получаем товар из БД (ORM модель)
+        from sqlalchemy import select
+        from models.product import Product as ProductORM, Tag as TagORM
+
+        stmt = select(ProductORM).where(ProductORM.id == product_id)
+        result = await session.execute(stmt)
+        product_orm = result.scalar_one_or_none()
+
+        if not product_orm:
+            raise HTTPException(status_code=404, detail="Товар не найден")
+
+        # Обновляем поля
+        product_orm.name = name
+        product_orm.description = description or None
+        product_orm.price_shmeckles = price_shmeckles
+        product_orm.price_flurbos = price_flurbos
+        product_orm.image_url = image_url or None
+        product_orm.category_id = category_id
+
+        # Обновляем теги
+        if tag_ids:
+            tags_stmt = select(TagORM).where(TagORM.id.in_(tag_ids))
+            tags_orm = await session.scalars(tags_stmt)
+            product_orm.tags = list(tags_orm.all())
+        else:
+            product_orm.tags = []
+
+        # Сохраняем изменения
+        await session.commit()
+
+        # Получаем обновленный товар для отображения
+        product = await product_get_by_id(session, product_id)
+
+        # Возвращаем обновленную карточку товара
+        return templates.TemplateResponse(
+            "partials/product_card.html",
+            {
+                "request": request,
+                "product": product,
+                "user": user,
+            },
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка обновления товара: {str(e)}",
+        )
