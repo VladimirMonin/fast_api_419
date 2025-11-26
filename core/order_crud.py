@@ -62,45 +62,43 @@ async def create_order(
         item.product.price_shmeckles * item.quantity for item in cart.items
     )
 
-    # === ЯВНОЕ ОТКРЫТИЕ ТРАНЗАКЦИИ ===
-    async with session.begin():
-        # Шаг 3: Создаем запись заказа
-        order = Order(
-            user_id=user_id,
-            created_at=datetime.utcnow(),
-            status="pending",
-            total_amount=total_amount,
-            delivery_address=order_data.delivery_address,
-            phone=order_data.phone,
+    # Шаг 3: Создаем запись заказа
+    order = Order(
+        user_id=user_id,
+        created_at=datetime.utcnow(),
+        status="pending",
+        total_amount=total_amount,
+        delivery_address=order_data.delivery_address,
+        phone=order_data.phone,
+    )
+    session.add(order)
+    # Делаем flush, чтобы получить order.id для использования в OrderItem
+    await session.flush()
+
+    logger.info(f"✅ Создан заказ #{order.id} на сумму {total_amount} шмеклей")
+
+    # Шаг 4: Создаем позиции заказа с ЗАМОРОЖЕННЫМИ данными
+    for cart_item in cart.items:
+        order_item = OrderItem(
+            order_id=order.id,
+            product_id=cart_item.product_id,
+            quantity=cart_item.quantity,
+            # === КРИТИЧЕСКИ ВАЖНО: Копируем данные на момент покупки ===
+            frozen_name=cart_item.product.name,
+            frozen_price=cart_item.product.price_shmeckles,
         )
-        session.add(order)
-        # Делаем flush, чтобы получить order.id для использования в OrderItem
-        await session.flush()
+        session.add(order_item)
 
-        logger.info(f"✅ Создан заказ #{order.id} на сумму {total_amount} шмеклей")
+        logger.info(
+            f"  📋 Добавлена позиция: {order_item.frozen_name} "
+            f"x{order_item.quantity} по {order_item.frozen_price} шмеклей"
+        )
 
-        # Шаг 4: Создаем позиции заказа с ЗАМОРОЖЕННЫМИ данными
-        for cart_item in cart.items:
-            order_item = OrderItem(
-                order_id=order.id,
-                product_id=cart_item.product_id,
-                quantity=cart_item.quantity,
-                # === КРИТИЧЕСКИ ВАЖНО: Копируем данные на момент покупки ===
-                frozen_name=cart_item.product.name,
-                frozen_price=cart_item.product.price_shmeckles,
-            )
-            session.add(order_item)
+    # Шаг 5: Очищаем корзину БЕЗ auto_commit (commit сделает get_db_session)
+    await clear_cart(session, user_id, auto_commit=False)
 
-            logger.info(
-                f"  📋 Добавлена позиция: {order_item.frozen_name} "
-                f"x{order_item.quantity} по {order_item.frozen_price} шмеклей"
-            )
-
-        # Шаг 5: Очищаем корзину (используем существующую функцию)
-        await clear_cart(session, user_id)
-
-        # Шаг 6: Транзакция автоматически закоммитится при выходе из блока async with
-        # Если произойдет ошибка - автоматический rollback
+    # Шаг 6: Транзакция автоматически закоммитится в get_db_session()
+    # Если произойдет ошибка - автоматический rollback
 
     # Перезагружаем заказ с позициями для возврата (eager loading)
     # Выполняется ВНЕ транзакции, т.к. это только чтение

@@ -21,13 +21,16 @@ from schemas.commerce import CartItemCreate
 logger = logging.getLogger(__name__)
 
 
-async def get_or_create_cart(session: AsyncSession, user_id: int) -> Cart:
+async def get_or_create_cart(
+    session: AsyncSession, user_id: int, auto_commit: bool = True
+) -> Cart:
     """
     Получить корзину пользователя или создать новую, если её нет.
 
     Args:
         session: Асинхронная сессия БД
         user_id: ID пользователя
+        auto_commit: Автоматически делать commit (по умолчанию True)
 
     Returns:
         Cart: Корзина пользователя
@@ -41,8 +44,14 @@ async def get_or_create_cart(session: AsyncSession, user_id: int) -> Cart:
         # Создаем новую корзину
         cart = Cart(user_id=user_id)
         session.add(cart)
-        await session.commit()
-        await session.refresh(cart)
+
+        if auto_commit:
+            await session.commit()
+            await session.refresh(cart)
+        else:
+            await session.flush()
+            await session.refresh(cart)
+
         logger.info(f"🛒 Создана новая корзина для пользователя {user_id}")
     else:
         logger.info(
@@ -53,7 +62,11 @@ async def get_or_create_cart(session: AsyncSession, user_id: int) -> Cart:
 
 
 async def add_to_cart(
-    session: AsyncSession, user_id: int, product_id: int, quantity: int = 1
+    session: AsyncSession,
+    user_id: int,
+    product_id: int,
+    quantity: int = 1,
+    auto_commit: bool = True,
 ) -> CartItem:
     """
     Добавить товар в корзину с UPSERT логикой.
@@ -65,6 +78,7 @@ async def add_to_cart(
         user_id: ID пользователя
         product_id: ID товара
         quantity: Количество для добавления (по умолчанию 1)
+        auto_commit: Автоматически делать commit (по умолчанию True)
 
     Returns:
         CartItem: Созданная или обновленная позиция корзины
@@ -80,8 +94,8 @@ async def add_to_cart(
     if product is None:
         raise ValueError(f"Товар с ID {product_id} не найден")
 
-    # Получаем или создаем корзину
-    cart = await get_or_create_cart(session, user_id)
+    # Получаем или создаем корзину (БЕЗ auto_commit, т.к. мы сами решаем когда коммитить)
+    cart = await get_or_create_cart(session, user_id, auto_commit=False)
 
     # Проверяем, есть ли уже этот товар в корзине
     stmt = select(CartItem).where(
@@ -104,8 +118,12 @@ async def add_to_cart(
             f"✨ Добавлен новый товар {product_id} в корзину (количество: {quantity})"
         )
 
-    await session.commit()
-    await session.refresh(cart_item)
+    if auto_commit:
+        await session.commit()
+        await session.refresh(cart_item)
+    else:
+        await session.flush()
+        await session.refresh(cart_item)
 
     return cart_item
 
@@ -172,7 +190,11 @@ async def get_cart_with_items(session: AsyncSession, user_id: int) -> Cart | Non
 
 
 async def update_cart_item_quantity(
-    session: AsyncSession, user_id: int, item_id: int, quantity: int
+    session: AsyncSession,
+    user_id: int,
+    item_id: int,
+    quantity: int,
+    auto_commit: bool = True,
 ) -> CartItem:
     """
     Обновить количество товара в корзине.
@@ -182,6 +204,7 @@ async def update_cart_item_quantity(
         user_id: ID пользователя (для проверки доступа)
         item_id: ID позиции в корзине
         quantity: Новое количество
+        auto_commit: Автоматически делать commit (по умолчанию True)
 
     Returns:
         CartItem: Обновленная позиция
@@ -202,15 +225,22 @@ async def update_cart_item_quantity(
         raise ValueError(f"Позиция корзины {item_id} не найдена или недоступна")
 
     cart_item.quantity = quantity
-    await session.commit()
-    await session.refresh(cart_item)
+
+    if auto_commit:
+        await session.commit()
+        await session.refresh(cart_item)
+    else:
+        await session.flush()
+        await session.refresh(cart_item)
 
     logger.info(f"🔄 Обновлено количество позиции {item_id} до {quantity}")
 
     return cart_item
 
 
-async def remove_cart_item(session: AsyncSession, user_id: int, item_id: int) -> None:
+async def remove_cart_item(
+    session: AsyncSession, user_id: int, item_id: int, auto_commit: bool = True
+) -> None:
     """
     Удалить позицию из корзины.
 
@@ -218,6 +248,7 @@ async def remove_cart_item(session: AsyncSession, user_id: int, item_id: int) ->
         session: Асинхронная сессия БД
         user_id: ID пользователя (для проверки доступа)
         item_id: ID позиции для удаления
+        auto_commit: Автоматически делать commit (по умолчанию True)
 
     Raises:
         ValueError: Если позиция не найдена или пользователь не имеет к ней доступа
@@ -235,20 +266,25 @@ async def remove_cart_item(session: AsyncSession, user_id: int, item_id: int) ->
         raise ValueError(f"Позиция корзины {item_id} не найдена или недоступна")
 
     await session.delete(cart_item)
-    await session.commit()
+
+    if auto_commit:
+        await session.commit()
 
     logger.info(f"🗑️ Удалена позиция {item_id} из корзины пользователя {user_id}")
 
 
-async def clear_cart(session: AsyncSession, user_id: int) -> None:
+async def clear_cart(
+    session: AsyncSession, user_id: int, auto_commit: bool = True
+) -> None:
     """
     Полностью очистить корзину пользователя.
 
     Args:
         session: Асинхронная сессия БД
         user_id: ID пользователя
+        auto_commit: Автоматически делать commit (по умолчанию True)
     """
-    cart = await get_or_create_cart(session, user_id)
+    cart = await get_or_create_cart(session, user_id, auto_commit=False)
 
     # Удаляем все позиции
     stmt = select(CartItem).where(CartItem.cart_id == cart.id)
@@ -258,6 +294,7 @@ async def clear_cart(session: AsyncSession, user_id: int) -> None:
     for item in items:
         await session.delete(item)
 
-    await session.commit()
+    if auto_commit:
+        await session.commit()
 
     logger.info(f"🧹 Корзина пользователя {user_id} полностью очищена")
