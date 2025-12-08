@@ -21,10 +21,12 @@
 
                 <!-- Форма товара -->
                 <form method="post" 
+                      enctype="multipart/form-data"
                       {% if product %}
                           hx-post="/admin/products/{{ product.id }}/edit"
                           hx-target="#product-{{ product.id }}"
                           hx-swap="outerHTML"
+                          hx-encoding="multipart/form-data"
                       {% else %}
                           action="/admin/products/new"
                       {% endif %}>
@@ -84,17 +86,21 @@
                         </div>
                     </div>
 
-                    <!-- URL картинки -->
+                    <!-- Изображение товара -->
                     <div class="mb-3">
-                        <label for="image_url" class="form-label">URL картинки</label>
-                        <input type="text" 
+                        <label for="image" class="form-label">Изображение товара</label>
+                        <input type="file" 
                                class="form-control" 
-                               id="image_url" 
-                               name="image_url"
-                               value="{{ product.image_url if product else '' }}"
-                               maxlength="500"
-                               placeholder="https://example.com/image.jpg">
-                        <div class="form-text">Введите полный URL изображения товара</div>
+                               id="image" 
+                               name="image"
+                               accept="image/*">
+                        <div class="form-text">Загрузите изображение товара (JPG, PNG, WEBP)</div>
+                        {% if product and product.image_url %}
+                            <div class="mt-2">
+                                <small>Текущее изображение:</small>
+                                <img src="{{ product.image_url }}" alt="{{ product.name }}" style="max-width: 200px; max-height: 200px;" class="d-block mt-1">
+                            </div>
+                        {% endif %}
                     </div>
 
                     <!-- Категория -->

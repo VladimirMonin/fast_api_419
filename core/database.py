@@ -512,8 +512,15 @@ async def product_update(session: AsyncSession, product_data: ProductUpdate) -> 
     :param product_data: Данные для обновления продукта
     :return: Обновлённый продукт
     """
-    # Получаем существующий продукт
-    product = await session.get(ProductORM, product_data.id)
+    # Получаем существующий продукт с жадной загрузкой связей
+    stmt = (
+        select(ProductORM)
+        .where(ProductORM.id == product_data.id)
+        .options(selectinload(ProductORM.category), selectinload(ProductORM.tags))
+    )
+    result = await session.execute(stmt)
+    product = result.scalar_one_or_none()
+
     if not product:
         raise ValueError(f"Продукт с ID={product_data.id} не найден")
 

@@ -10,7 +10,8 @@
             <!-- Форма редактирования -->
             <form hx-post="/admin/products/{{ product.id }}/edit"
                   hx-target="#product-{{ product.id }}"
-                  hx-swap="outerHTML">
+                  hx-swap="outerHTML"
+                  hx-encoding="multipart/form-data">
                 
                 <!-- Название -->
                 <div class="mb-2">
@@ -58,13 +59,19 @@
 
                 <!-- URL картинки -->
                 <div class="mb-2">
-                    <label for="image_url-{{ product.id }}" class="form-label small mb-1">URL картинки</label>
-                    <input type="text" 
+                    <label for="image-{{ product.id }}" class="form-label small mb-1">Изображение товара</label>
+                    <input type="file" 
                            class="form-control form-control-sm" 
-                           id="image_url-{{ product.id }}" 
-                           name="image_url"
-                           value="{{ product.image_url or '' }}"
-                           placeholder="https://example.com/image.jpg">
+                           id="image-{{ product.id }}" 
+                           name="image"
+                           accept="image/*">
+                    <div class="form-text small">
+                        {% if product.image_url %}
+                            Текущее изображение: <a href="{{ product.image_url }}" target="_blank">посмотреть</a>
+                        {% else %}
+                            Изображение не загружено
+                        {% endif %}
+                    </div>
                 </div>
 
                 <!-- Категория -->

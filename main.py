@@ -12,7 +12,7 @@ from auth.backend import auth_backend
 from auth.manager import get_user_manager
 from core.logging_config import setup_logging
 from models.user import User
-from routes import categories, products, tags, cart, orders, pages, auth, admin
+from routes import categories, products, tags, cart, orders, pages, auth, admin, weather
 from schemas.user import UserCreate, UserRead, UserUpdate
 
 # Настройка логирования при импорте модуля
@@ -94,6 +94,9 @@ app.include_router(auth.router, prefix="/auth", tags=["Auth HTML"])
 
 # HTML роуты админ-панели
 app.include_router(admin.router, tags=["Admin HTML"])
+
+# Учебный роут погоды с HTMX
+app.include_router(weather.router, tags=["Weather"])
 
 # HTML страницы (должны быть подключены ПОСЛЕДНИМИ, чтобы не перехватывать API)
 app.include_router(pages.router, tags=["Pages"])

@@ -26,7 +26,10 @@
         <small class="text-muted">Начните вводить название товара</small>
     </div>
     <div class="col-md-6 col-lg-8">
-        {% include "partials/product_count.html" %}
+        <p id="product-count" class="text-muted mb-0 mt-2" hx-swap-oob="true">
+    Найдено товаров: <strong>{{ products|length }}</strong>
+</p>
+
     </div>
 </div>
 

@@ -11,7 +11,16 @@
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,10 +31,11 @@ from core.database import (
     get_db_session,
     product_create,
     product_get_by_id,
+    product_update,
     tags_get_all,
 )
 from models.user import User
-from schemas.product import ProductCreate
+from schemas.product import ProductCreate, ProductUpdate
 
 router = APIRouter()
 
@@ -107,9 +117,9 @@ async def create_product(
     description: str = Form(""),
     price_shmeckles: float = Form(...),
     price_flurbos: float = Form(...),
-    image_url: str = Form(""),
     category_id: str = Form(""),
     tag_ids: List[int] = Form(default=[]),
+    image: UploadFile | None = File(None),
 ):
     """
     Создает новый товар в базе данных.
@@ -124,21 +134,38 @@ async def create_product(
         description: Описание товара
         price_shmeckles: Цена в шмекелях
         price_flurbos: Цена в флурбо
-        image_url: URL картинки
         category_id: ID категории (опционально)
         tag_ids: Список ID тегов
+        image: Файл изображения для загрузки (опционально)
 
     Returns:
         RedirectResponse: Редирект на главную страницу после создания
     """
+    # Обрабатываем загрузку изображения
+    image_url = None
+    if image and image.filename:
+        import uuid
+        from core.storage import save_upload_file
+
+        # Генерируем уникальное имя файла
+        file_extension = Path(image.filename).suffix
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+
+        # Сохраняем файл в uploads/products/
+        await save_upload_file(image, "products", unique_filename)
+        image_url = f"/uploads/products/{unique_filename}"
+
+    # Конвертируем category_id из строки в int или None
+    category_id_int = int(category_id) if category_id else None
+
     # Создаем схему для валидации
     product_data = ProductCreate(
         name=name,
         description=description or None,
         price_shmeckles=price_shmeckles,
         price_flurbos=price_flurbos,
-        image_url=image_url or None,
-        category_id=int(category_id) if category_id else None,
+        image_url=image_url,
+        category_id=category_id_int,
         tag_ids=tag_ids,
     )
 
@@ -206,9 +233,9 @@ async def update_product(
     description: str = Form(""),
     price_shmeckles: float = Form(...),
     price_flurbos: float = Form(...),
-    image_url: str = Form(""),
     category_id: str = Form(""),
     tag_ids: List[int] = Form(default=[]),
+    image: UploadFile | None = File(None),
 ):
     """
     Обновляет данные товара (HTMX).
@@ -224,63 +251,62 @@ async def update_product(
         description: Новое описание товара
         price_shmeckles: Новая цена в шмекелях
         price_flurbos: Новая цена в флурбо
-        image_url: Новый URL картинки
-        category_id: Новый ID категории
+        category_id: Новый ID категории (опционально)
         tag_ids: Новый список ID тегов
+        image: Файл изображения для загрузки (опционально)
 
     Returns:
         HTMLResponse: Обновленная карточка товара
     """
     try:
-        # Получаем товар из БД (ORM модель)
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
-        from models.product import Product as ProductORM, Tag as TagORM
+        # Получаем текущий товар для сохранения URL изображения
+        current_product = await product_get_by_id(session, product_id)
+        image_url = current_product.image_url
 
-        # Загружаем товар с тегами
-        stmt = (
-            select(ProductORM)
-            .options(selectinload(ProductORM.tags))
-            .where(ProductORM.id == product_id)
+        # Обрабатываем загрузку изображения, если оно передано
+        if image and image.filename:
+            import uuid
+            from core.storage import save_upload_file
+
+            # Генерируем уникальное имя файла
+            file_extension = Path(image.filename).suffix
+            unique_filename = f"{uuid.uuid4()}{file_extension}"
+
+            # Сохраняем файл в uploads/products/
+            await save_upload_file(image, "products", unique_filename)
+            image_url = f"/uploads/products/{unique_filename}"
+
+        # Конвертируем category_id из строки в int или None
+        category_id_int = int(category_id) if category_id else None
+
+        # Создаем схему обновления
+        product_data = ProductUpdate(
+            id=product_id,
+            name=name,
+            description=description or None,
+            price_shmeckles=price_shmeckles,
+            price_flurbos=price_flurbos,
+            image_url=image_url,
+            category_id=category_id_int,
+            tag_ids=tag_ids if tag_ids else [],
         )
-        result = await session.execute(stmt)
-        product_orm = result.scalar_one_or_none()
 
-        if not product_orm:
-            raise HTTPException(status_code=404, detail="Товар не найден")
-
-        # Обновляем поля
-        product_orm.name = name
-        product_orm.description = description.strip() if description else None
-        product_orm.price_shmeckles = price_shmeckles
-        product_orm.price_flurbos = price_flurbos
-        product_orm.image_url = image_url.strip() if image_url else None
-        product_orm.category_id = int(category_id) if category_id else None
-
-        # Обновляем теги
-        if tag_ids:
-            tags_stmt = select(TagORM).where(TagORM.id.in_(tag_ids))
-            tags_orm = await session.scalars(tags_stmt)
-            product_orm.tags = list(tags_orm.all())
-        else:
-            product_orm.tags = []
-
-        # Сохраняем изменения
+        # Используем функцию product_update из database.py
+        updated_product = await product_update(session, product_data)
         await session.commit()
-
-        # Получаем обновленный товар для отображения
-        product = await product_get_by_id(session, product_id)
 
         # Возвращаем обновленную карточку товара
         return templates.TemplateResponse(
             "partials/product_card.html",
             {
                 "request": request,
-                "product": product,
+                "product": updated_product,
                 "user": user,
             },
         )
 
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,

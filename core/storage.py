@@ -106,3 +106,64 @@ def delete_product_image(image_url: str) -> bool:
     except Exception as e:
         logger.error(f"❌ Ошибка при удалении изображения: {e}")
         return False
+
+
+async def save_upload_file(
+    file: UploadFile, subfolder: str, filename: str | None = None
+) -> Path:
+    """
+    Универсальная функция для сохранения загруженных файлов.
+
+    Args:
+        file: Загруженный файл (UploadFile)
+        subfolder: Подпапка в uploads/ (например, "products")
+        filename: Имя файла для сохранения (если None, будет использовано оригинальное)
+
+    Returns:
+        Path: Полный путь к сохранённому файлу
+
+    Raises:
+        HTTPException: При ошибках валидации или сохранения
+    """
+    # Создаём директорию, если её нет
+    upload_dir = Path("uploads") / subfolder
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Определяем имя файла
+    if filename is None:
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="Имя файла отсутствует")
+        filename = file.filename
+
+    # Проверка расширения файла
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Разрешены только изображения: {', '.join(ALLOWED_EXTENSIONS)}",
+        )
+
+    # Чтение содержимого файла
+    content = await file.read()
+
+    # Проверка размера файла
+    file_size = len(content)
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Файл слишком большой. Максимум: {MAX_FILE_SIZE / (1024 * 1024):.1f} МБ",
+        )
+
+    # Полный путь к файлу
+    filepath = upload_dir / filename
+
+    # Сохранение файла
+    try:
+        with open(filepath, "wb") as f:
+            f.write(content)
+        logger.info(f"✅ Файл сохранён: {filepath} ({file_size} байт)")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при сохранении файла: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка сохранения файла: {e}")
+
+    return filepath
